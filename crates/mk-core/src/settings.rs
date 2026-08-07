@@ -42,10 +42,13 @@ impl Areas {
     }
 }
 
+/// **시간 단위는 전부 밀리초(ms)로 통일**(사용자 확정 08-07) — 화면·파일·코드가 같은 단위를 쓰면
+/// 환산 실수가 사라진다. 구 키(`poll_secs`·`cooldown_secs`·`interval_mins`)는 읽을 때 자동
+/// 변환하고 저장 시 새 키로만 쓴다(docs/09 §7-4 "개명 금지, 1회 마이그레이션").
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Settings {
     // [general]
-    pub poll_secs: u32,
+    pub poll_ms: u32,
     pub warn_percent: u32,
     pub danger_percent: u32,
     pub notify: bool,
@@ -53,8 +56,9 @@ pub struct Settings {
     // [auto]
     pub auto_enabled: bool,
     pub threshold_percent: u32,
-    pub cooldown_secs: u32,
-    pub interval_mins: u32,
+    pub cooldown_ms: u32,
+    /// 주기 정리 간격(ms). 0 = 끔.
+    pub interval_ms: u32,
     // [areas]
     pub areas: Areas,
     // [ui]
@@ -69,15 +73,15 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            poll_secs: 5,
+            poll_ms: 5_000,
             warn_percent: 80,
             danger_percent: 90,
             notify: true,
             hotkey_clean: String::new(),
             auto_enabled: true,
             threshold_percent: 90,
-            cooldown_secs: 300,
-            interval_mins: 0,
+            cooldown_ms: 300_000,
+            interval_ms: 0,
             areas: Areas::default(),
             topn: 5,
             list_refresh_ms: 2_000,
@@ -134,7 +138,21 @@ impl Settings {
     fn apply(&mut self, section: &str, key: &str, value: &str) -> bool {
         let num = value.parse::<u32>().ok();
         match (section, key) {
-            ("general", "poll_secs") => self.poll_secs = num.unwrap_or(self.poll_secs),
+            ("general", "poll_ms") => self.poll_ms = num.unwrap_or(self.poll_ms),
+            // 구 키(초·분) — 1회 마이그레이션: 읽어서 ms로 환산하고, 저장 시엔 새 키로만 쓴다
+            ("general", "poll_secs") => {
+                self.poll_ms = num.map(|v| v.saturating_mul(1_000)).unwrap_or(self.poll_ms)
+            }
+            ("auto", "cooldown_secs") => {
+                self.cooldown_ms = num
+                    .map(|v| v.saturating_mul(1_000))
+                    .unwrap_or(self.cooldown_ms)
+            }
+            ("auto", "interval_mins") => {
+                self.interval_ms = num
+                    .map(|v| v.saturating_mul(60_000))
+                    .unwrap_or(self.interval_ms)
+            }
             ("general", "warn_percent") => self.warn_percent = num.unwrap_or(self.warn_percent),
             ("general", "danger_percent") => {
                 self.danger_percent = num.unwrap_or(self.danger_percent)
@@ -147,8 +165,8 @@ impl Settings {
             ("auto", "threshold_percent") => {
                 self.threshold_percent = num.unwrap_or(self.threshold_percent)
             }
-            ("auto", "cooldown_secs") => self.cooldown_secs = num.unwrap_or(self.cooldown_secs),
-            ("auto", "interval_mins") => self.interval_mins = num.unwrap_or(self.interval_mins),
+            ("auto", "cooldown_ms") => self.cooldown_ms = num.unwrap_or(self.cooldown_ms),
+            ("auto", "interval_ms") => self.interval_ms = num.unwrap_or(self.interval_ms),
             ("areas", "working_sets") => {
                 self.areas.working_sets = parse_bool(value).unwrap_or(self.areas.working_sets)
             }
@@ -180,7 +198,7 @@ impl Settings {
 
     /// 범위 클램프 + 모순 해소(docs/09 §7-2).
     pub fn normalize(&mut self) {
-        self.poll_secs = clamp(self.poll_secs, 2, 30);
+        self.poll_ms = clamp(self.poll_ms, 2_000, 30_000);
         self.warn_percent = clamp(self.warn_percent, 50, 95);
         self.danger_percent = clamp(self.danger_percent, 51, 99);
         if self.warn_percent >= self.danger_percent {
@@ -190,9 +208,9 @@ impl Settings {
             self.danger_percent = d.danger_percent;
         }
         self.threshold_percent = clamp(self.threshold_percent, 50, 95);
-        self.cooldown_secs = clamp(self.cooldown_secs, 60, 1_800);
-        if self.interval_mins != 0 {
-            self.interval_mins = clamp(self.interval_mins, 10, 240);
+        self.cooldown_ms = clamp(self.cooldown_ms, 60_000, 1_800_000);
+        if self.interval_ms != 0 {
+            self.interval_ms = clamp(self.interval_ms, 600_000, 14_400_000);
         }
         self.topn = clamp(self.topn, 3, 10);
         self.list_refresh_ms = clamp(self.list_refresh_ms, 500, 10_000);
@@ -205,8 +223,9 @@ impl Settings {
         out.push_str("; Nexa MemKeeper 설정 — 스키마: docs/09-settings-schema.md\n");
         out.push_str("; 앱에서 설정 창으로 바꾸는 것을 권장합니다(범위 검증·즉시 적용).\n\n");
 
+        out.push_str("; 시간 단위는 모두 밀리초(ms)입니다.\n");
         out.push_str("[general]\n");
-        out.push_str(&format!("poll_secs = {}\n", self.poll_secs));
+        out.push_str(&format!("poll_ms = {}\n", self.poll_ms));
         out.push_str(&format!("warn_percent = {}\n", self.warn_percent));
         out.push_str(&format!("danger_percent = {}\n", self.danger_percent));
         out.push_str(&format!("notify = {}\n", b(self.notify)));
@@ -216,8 +235,8 @@ impl Settings {
         out.push_str("\n[auto]\n");
         out.push_str(&format!("enabled = {}\n", b(self.auto_enabled)));
         out.push_str(&format!("threshold_percent = {}\n", self.threshold_percent));
-        out.push_str(&format!("cooldown_secs = {}\n", self.cooldown_secs));
-        out.push_str(&format!("interval_mins = {}\n", self.interval_mins));
+        out.push_str(&format!("cooldown_ms = {}\n", self.cooldown_ms));
+        out.push_str(&format!("interval_ms = {}\n", self.interval_ms));
         self.push_unknown(&mut out, "auto");
 
         out.push_str("\n[areas]\n");
@@ -267,8 +286,11 @@ mod tests {
     #[test]
     fn defaults_match_documented_schema() {
         let s = Settings::default();
-        assert_eq!((s.poll_secs, s.warn_percent, s.danger_percent), (5, 80, 90));
-        assert_eq!((s.threshold_percent, s.cooldown_secs), (90, 300));
+        assert_eq!(
+            (s.poll_ms, s.warn_percent, s.danger_percent),
+            (5_000, 80, 90)
+        );
+        assert_eq!((s.threshold_percent, s.cooldown_ms), (90, 300_000));
         assert_eq!((s.list_refresh_ms, s.topn), (2_000, 5));
         assert!(s.auto_enabled && s.notify && s.hide_pseudo && s.view_flat);
         // 안전 우선 — ①② 만 기본 on
@@ -282,7 +304,7 @@ mod tests {
     fn parse_reads_all_sections() {
         let ini = "\
 [general]
-poll_secs = 10
+poll_ms = 10000
 notify = off
 [auto]
 enabled = 0
@@ -293,7 +315,7 @@ standby_all = yes
 view_flat = false
 ";
         let s = Settings::parse(ini);
-        assert_eq!(s.poll_secs, 10);
+        assert_eq!(s.poll_ms, 10_000);
         assert!(!s.notify);
         assert!(!s.auto_enabled);
         assert_eq!(s.threshold_percent, 75);
@@ -303,12 +325,31 @@ view_flat = false
 
     #[test]
     fn out_of_range_values_are_clamped() {
-        let s = Settings::parse("[general]\npoll_secs = 999\n[auto]\ncooldown_secs = 1\ninterval_mins = 5\n[ui]\nlist_refresh_ms = 50\ntopn = 99\n");
-        assert_eq!(s.poll_secs, 30); // 2~30
-        assert_eq!(s.cooldown_secs, 60); // 60~1800
-        assert_eq!(s.interval_mins, 10); // 0이거나 10~240
+        let s = Settings::parse("[general]\npoll_ms = 999999\n[auto]\ncooldown_ms = 1\ninterval_ms = 5000\n[ui]\nlist_refresh_ms = 50\ntopn = 99\n");
+        assert_eq!(s.poll_ms, 30_000); // 2000~30000
+        assert_eq!(s.cooldown_ms, 60_000); // 60000~1800000
+        assert_eq!(s.interval_ms, 600_000); // 0이거나 600000~14400000
         assert_eq!(s.list_refresh_ms, 500);
         assert_eq!(s.topn, 10);
+    }
+
+    #[test]
+    fn legacy_time_keys_migrate_to_ms() {
+        // 구 버전 파일(초·분) — 값이 그대로 살아나야 하고, 저장 시엔 ms 키로만 남는다
+        let s = Settings::parse(
+            "[general]\npoll_secs = 10\n[auto]\ncooldown_secs = 600\ninterval_mins = 30\n",
+        );
+        assert_eq!(s.poll_ms, 10_000);
+        assert_eq!(s.cooldown_ms, 600_000);
+        assert_eq!(s.interval_ms, 1_800_000);
+        let out = s.to_ini();
+        assert!(out.contains("poll_ms = 10000"));
+        assert!(out.contains("cooldown_ms = 600000"));
+        assert!(out.contains("interval_ms = 1800000"));
+        // 구 키는 남기지 않는다(1회 마이그레이션 — 보존 대상 아님)
+        assert!(!out.contains("poll_secs"), "구 키가 남았다:\n{out}");
+        assert!(!out.contains("cooldown_secs"));
+        assert!(!out.contains("interval_mins"));
     }
 
     #[test]
@@ -320,14 +361,14 @@ view_flat = false
 
     #[test]
     fn invalid_format_falls_back_to_default() {
-        let s = Settings::parse("[general]\npoll_secs = 뭐지\nnotify = maybe\n");
-        assert_eq!(s.poll_secs, 5);
+        let s = Settings::parse("[general]\npoll_ms = 뭐지\nnotify = maybe\n");
+        assert_eq!(s.poll_ms, 5_000);
         assert!(s.notify);
     }
 
     #[test]
     fn unknown_keys_and_sections_survive_roundtrip() {
-        let ini = "[general]\npoll_secs = 7\nfuture_key = 42\n\n[experimental]\nsomething = on\n";
+        let ini = "[general]\npoll_ms = 7000\nfuture_key = 42\n\n[experimental]\nsomething = on\n";
         let s = Settings::parse(ini);
         let out = s.to_ini();
         assert!(
@@ -346,7 +387,7 @@ view_flat = false
     #[test]
     fn roundtrip_is_stable() {
         let s = Settings {
-            poll_secs: 12,
+            poll_ms: 12_000,
             hotkey_clean: "Ctrl+Alt+M".into(),
             areas: Areas {
                 standby_all: true,
@@ -360,8 +401,8 @@ view_flat = false
 
     #[test]
     fn comments_and_blank_lines_are_ignored() {
-        let s = Settings::parse("; 주석\n\n# 다른 주석\n[general]\npoll_secs = 9\n");
-        assert_eq!(s.poll_secs, 9);
+        let s = Settings::parse("; 주석\n\n# 다른 주석\n[general]\npoll_ms = 9000\n");
+        assert_eq!(s.poll_ms, 9_000);
     }
 
     #[test]

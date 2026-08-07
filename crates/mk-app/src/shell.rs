@@ -245,7 +245,7 @@ unsafe fn notify_balloon(hwnd: HWND, title: &str, body: &str, ok: bool) {
 /// 설정 로드 + 즉시 반영(폴링 타이머 재설정). 시작 시와 설정 저장 후에 호출.
 unsafe fn apply_settings(hwnd: HWND) {
     let s = crate::config::load();
-    let poll_ms = s.poll_secs * 1000;
+    let poll_ms = s.poll_ms;
     SETTINGS.with(|c| *c.borrow_mut() = s);
     SetTimer(Some(hwnd), TIMER_POLL, poll_ms, None); // 같은 ID 재설정 = 주기 교체
 }
@@ -257,7 +257,7 @@ unsafe fn auto_clean_if_due(hwnd: HWND) {
     }
     let since = LAST_CLEAN
         .get()
-        .map(|(at, _)| at.elapsed().as_secs())
+        .map(|(at, _)| at.elapsed().as_millis() as u64)
         .unwrap_or(u64::MAX);
     let percent = read_mem().used_percent();
     let due = SETTINGS.with(|c| mk_core::should_auto_clean(&c.borrow(), percent, since));

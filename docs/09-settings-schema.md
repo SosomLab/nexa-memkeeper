@@ -1,5 +1,8 @@
 # 09 · 설정 스키마 — `data\settings.ini` (M4 구현 SSOT)
 
+> ⏱ **시간 단위는 전부 밀리초(ms)로 통일**(사용자 확정 08-07) — 설정 창·ini 파일·코드가 같은 단위를 쓴다.
+> 구 키(`poll_secs`·`cooldown_secs`·`interval_mins`)는 읽을 때 자동 환산되고 저장 시 새 키로 대체된다(1회 마이그레이션).
+>
 > **구현 상태(08-07, M4)**: 파싱·검증(mk-core `settings.rs`)·파일 I/O(mk-app `config.rs`)·설정 창 완료.
 > 미구현: `hotkey_clean`(전역 핫키 등록), `[watch]`(X-1 후보), `[exclude]`, `[auto] low_memory_event`,
 > `[areas] combine`(⑥ — M5). UI에 없는 키도 파일에 쓰면 보존되며, 구현 시 그대로 살아난다.
@@ -13,7 +16,7 @@
 
 | 키 | 형 | 기본 | 범위/값 | UI |
 | --- | --- | --- | --- | --- |
-| `poll_secs` | u32 | `5` | 2~30 | 설정 창·일반 |
+| `poll_ms` | u32 | `5000` | 2000~30000 | 설정 창·일반 |
 | `tray_display` | enum | `percent` | `percent` \| `free_mb` \| `used_mb` (후보 X-6) | 〃 |
 | `warn_percent` | u32 | `80` | 50~95, danger 미만 | 〃 |
 | `danger_percent` | u32 | `90` | warn 초과~99 | 〃 |
@@ -28,8 +31,8 @@
 | --- | --- | --- | --- | --- |
 | `enabled` | bool | `true` | 임계값 자동 정리 마스터 스위치 | 트레이 토글 + 설정 창 |
 | `threshold_percent` | u32 | `90` | 50~95, 5 단위 | 설정 창·자동 정리 |
-| `cooldown_secs` | u32 | `300` | 60~1800 — 연속 실행 방지 | 〃 |
-| `interval_mins` | u32 | `0`(off) | 0 \| 10~240 — 주기 정리(임계값과 독립) | 〃 |
+| `cooldown_ms` | u32 | `300000` | 60000~1800000 — 연속 실행 방지 | 〃 |
+| `interval_ms` | u32 | `0`(off) | 0 \| 600000~14400000 — 주기 정리(임계값과 독립) | 〃 |
 | `low_memory_event` | bool | `false` | `CreateMemoryResourceNotification` 트리거(실험적) | 〃 |
 | `suppress_fullscreen` | bool | `true` | 전체화면(게임·발표) 중 자동 정리 보류 — `SHQueryUserNotificationState`(후보 X-2) | 〃 |
 | `on_battery` | enum | `normal` | `normal` \| `pause`(배터리 시 자동 정리 보류) (후보 X-4) | 〃 |
