@@ -19,6 +19,7 @@ use windows::Win32::Graphics::Gdi::{
     DT_SINGLELINE, DT_VCENTER, HBRUSH, HDC, HFONT, NULL_PEN, OUT_DEFAULT_PRECIS, PAINTSTRUCT,
     SRCCOPY, SYS_COLOR_INDEX, TRANSPARENT,
 };
+use windows::Win32::Graphics::Gdi::{MonitorFromRect, ScreenToClient, MONITOR_DEFAULTTONULL};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Registry::{
     RegCloseKey, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW, HKEY,
@@ -33,20 +34,21 @@ use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CheckMenuItem, CreateMenu, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
     DestroyMenu, DestroyWindow, DispatchMessageW, GetClientRect, GetCursorPos, GetDlgItem,
-    GetMessageW, GetParent, GetScrollInfo, GetWindowLongPtrW, GetWindowTextLengthW, GetWindowTextW,
-    KillTimer, LoadCursorW, LoadIconW, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage,
-    RegisterClassW, SendMessageW, SetForegroundWindow, SetMenu, SetTimer, SetWindowLongPtrW,
-    SetWindowPos, SetWindowTextW, ShowWindow, TrackPopupMenu, TranslateMessage, CW_USEDEFAULT,
-    ES_AUTOHSCROLL, GWLP_USERDATA, HMENU, HWND_TOP, IDC_ARROW, IDYES, MB_ICONINFORMATION,
-    MB_ICONWARNING, MB_OK, MB_YESNO, MF_BYCOMMAND, MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR,
-    MF_STRING, MF_UNCHECKED, MSG, SB_BOTTOM, SB_LINEDOWN, SB_LINEUP, SB_PAGEDOWN, SB_PAGEUP,
-    SB_THUMBPOSITION, SB_THUMBTRACK, SB_TOP, SB_VERT, SCROLLINFO, SCROLLINFO_MASK, SIF_PAGE,
-    SIF_POS, SIF_RANGE, SIF_TRACKPOS, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SW_HIDE, SW_SHOW,
-    SW_SHOWNORMAL, TPM_RETURNCMD, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_CHAR,
-    WM_COMMAND, WM_CREATE, WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP,
-    WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONUP, WM_SETFONT, WM_SIZE, WM_TIMER, WM_VSCROLL,
-    WNDCLASSW, WS_CHILD, WS_CLIPSIBLINGS, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_TABSTOP,
-    WS_VISIBLE, WS_VSCROLL,
+    GetMessageW, GetParent, GetScrollInfo, GetWindowLongPtrW, GetWindowPlacement,
+    GetWindowTextLengthW, GetWindowTextW, KillTimer, LoadCursorW, LoadIconW, MessageBoxW,
+    MoveWindow, PostMessageW, PostQuitMessage, RegisterClassW, SendMessageW, SetCursor,
+    SetForegroundWindow, SetMenu, SetTimer, SetWindowLongPtrW, SetWindowPos, SetWindowTextW,
+    ShowWindow, TrackPopupMenu, TranslateMessage, CW_USEDEFAULT, ES_AUTOHSCROLL, GWLP_USERDATA,
+    HMENU, HTCLIENT, HWND_TOP, IDC_ARROW, IDC_SIZEWE, IDYES, MB_ICONINFORMATION, MB_ICONWARNING,
+    MB_OK, MB_YESNO, MF_BYCOMMAND, MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING,
+    MF_UNCHECKED, MSG, SB_BOTTOM, SB_LINEDOWN, SB_LINEUP, SB_PAGEDOWN, SB_PAGEUP, SB_THUMBPOSITION,
+    SB_THUMBTRACK, SB_TOP, SB_VERT, SCROLLINFO, SCROLLINFO_MASK, SIF_PAGE, SIF_POS, SIF_RANGE,
+    SIF_TRACKPOS, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SW_HIDE, SW_SHOW, SW_SHOWNORMAL,
+    TPM_RETURNCMD, TPM_RIGHTBUTTON, WINDOWPLACEMENT, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP,
+    WM_CHAR, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN,
+    WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFONT,
+    WM_SIZE, WM_TIMER, WM_VSCROLL, WNDCLASSW, WS_CHILD, WS_CLIPSIBLINGS, WS_EX_CLIENTEDGE,
+    WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 
 const CLASS: PCWSTR = w!("NexaMemKeeperList");
@@ -130,6 +132,10 @@ struct ListState {
     expanded: HashSet<u32>,
     /// 기본 펼침을 이미 심어 준 묶음 키 — **한 번만** 심어야 접기가 유지된다.
     seeded: HashSet<u32>,
+    /// 고정 열 폭(PID·Private·Working Set·Threads) — 헤더 경계를 끌어 바꾸고 ini에 남는다(M3-4).
+    col_w: Vec<i32>,
+    /// 열 폭 조절 중인 열 번호(1~4). `None` = 조절 아님.
+    dragging: Option<usize>,
     top: i32,
     /// 선택 행 — (pid, tid). tid≠0이면 쓰레드 행.
     sel: (u32, u32),
@@ -243,6 +249,20 @@ pub fn run() -> u32 {
         ) else {
             return 1;
         };
+        // 지난번 창 위치·크기를 복원한다(M3-4). 화면 구성이 바뀌어 **보이지 않는 좌표**가 되는 일이
+        // 있으므로, 그 위치에 실제 모니터가 있는지 확인하고 없으면 기본 위치를 그대로 쓴다.
+        let cfg = crate::config::load();
+        if cfg.win_w > 0 && cfg.win_h > 0 {
+            let rc = RECT {
+                left: cfg.win_x,
+                top: cfg.win_y,
+                right: cfg.win_x + cfg.win_w,
+                bottom: cfg.win_y + cfg.win_h,
+            };
+            if !MonitorFromRect(&rc, MONITOR_DEFAULTTONULL).is_invalid() {
+                let _ = MoveWindow(hwnd, rc.left, rc.top, cfg.win_w, cfg.win_h, false);
+            }
+        }
         let _ = ShowWindow(hwnd, SW_SHOWNORMAL);
         let _ = SetForegroundWindow(hwnd);
         let mut msg = MSG::default();
@@ -448,6 +468,13 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                     rows: Vec::new(),
                     expanded: HashSet::new(),
                     seeded: HashSet::new(),
+                    // 저장된 폭이 없으면 열 정의의 기본 폭을 쓴다(개수 검증은 mk-core가 한다)
+                    col_w: if cfg.col_w.len() == COLS.len() - 1 {
+                        cfg.col_w.clone()
+                    } else {
+                        COLS.iter().skip(1).map(|c| c.3).collect()
+                    },
+                    dragging: None,
                     top: 0,
                     sel: (u32::MAX, u32::MAX), // 분류 행(pid 0)과 겹치지 않는 "선택 없음" 값
                     sort_key: SortKey::PrivateWs,
@@ -568,8 +595,55 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
             let _ = InvalidateRect(Some(hwnd), None, false);
             LRESULT(0)
         }
+        // 열 경계 위에서는 좌우 화살표 커서 — 끌 수 있다는 신호(M3-4)
+        WM_SETCURSOR if (lp.0 as u32 & 0xFFFF) == HTCLIENT => {
+            let mut pt = POINT::default();
+            let _ = GetCursorPos(&mut pt);
+            let _ = ScreenToClient(hwnd, &mut pt);
+            let width = with_state_ret(|st| st.client.right).unwrap_or(0);
+            let on_edge = with_state_ret(|st| st.dragging.is_some()).unwrap_or(false)
+                || (pt.y < HEAD_H && col_edge_at(hwnd, width, pt.x).is_some());
+            if on_edge {
+                let _ = SetCursor(LoadCursorW(None, IDC_SIZEWE).ok());
+                LRESULT(1)
+            } else {
+                DefWindowProcW(hwnd, msg, wp, lp)
+            }
+        }
+        WM_MOUSEMOVE if with_state_ret(|st| st.dragging).unwrap_or(None).is_some() => {
+            let x = lo_i16(lp);
+            let width = with_state_ret(|st| st.client.right).unwrap_or(0);
+            let bounds = col_bounds_for(hwnd, width);
+            with_state(|st| {
+                if let Some(i) = st.dragging {
+                    // 오른쪽 끝을 고정하고 왼쪽 경계를 끌어 폭을 정한다(값 열은 우측 정렬이라 자연스럽다)
+                    let right = bounds[i].1;
+                    let w = (right - x).clamp(40, 400);
+                    if let Some(slot) = st.col_w.get_mut(i - 1) {
+                        *slot = w;
+                    }
+                }
+            });
+            let _ = InvalidateRect(Some(hwnd), None, false);
+            LRESULT(0)
+        }
+        WM_LBUTTONUP if with_state_ret(|st| st.dragging).unwrap_or(None).is_some() => {
+            let _ = ReleaseCapture();
+            with_state(|st| st.dragging = None);
+            save_ui_state(hwnd); // 끌기를 마친 시점에만 저장(끄는 동안 파일을 계속 쓰지 않는다)
+            LRESULT(0)
+        }
         WM_LBUTTONDOWN => {
             let (x, y) = (lo_i16(lp), hi_i16(lp));
+            if y < HEAD_H {
+                // 경계를 집었으면 정렬이 아니라 폭 조절이다
+                let width = with_state_ret(|st| st.client.right).unwrap_or(0);
+                if let Some(i) = col_edge_at(hwnd, width, x) {
+                    SetCapture(hwnd);
+                    with_state(|st| st.dragging = Some(i));
+                    return LRESULT(0);
+                }
+            }
             if y < HEAD_H {
                 // 헤더 클릭 = 정렬(같은 열 재클릭 시 방향 반전)
                 let width = with_state_ret(|st| st.client.right).unwrap_or(0);
@@ -637,6 +711,7 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
             LRESULT(0)
         }
         WM_DESTROY => {
+            save_ui_state(hwnd); // 보기 모드·열 폭·창 위치를 남긴다(M3-4)
             let _ = KillTimer(Some(hwnd), TIMER_REFRESH);
             STATE.with(|s| {
                 if let Some(st) = s.borrow_mut().take() {
@@ -1243,6 +1318,50 @@ unsafe fn col_at(hwnd: HWND, width: i32, x: i32) -> Option<SortKey> {
         .map(|(i, _)| COLS[i].1)
 }
 
+/// 헤더에서 **열 경계**(끌어서 폭을 바꾸는 지점)를 집었는지 — 잡았으면 그 오른쪽 열 번호.
+///
+/// 이름 열(0)은 남는 폭을 흡수하므로 경계 대상이 아니다. 경계 판정 폭을 ±4px로 둔 것은
+/// 정렬 클릭과 겹치지 않으면서도 마우스로 집기 쉬운 크기이기 때문이다.
+unsafe fn col_edge_at(hwnd: HWND, width: i32, x: i32) -> Option<usize> {
+    let bounds = col_bounds_for(hwnd, width);
+    (1..bounds.len()).find(|&i| (x - bounds[i].0).abs() <= 4)
+}
+
+/// UI 상태(보기 모드·열 폭·창 위치)를 설정 파일에 남긴다(M3-4).
+///
+/// 정리 워커는 읽기 전용이지만(DR-7), **자기 창의 상태는 그 창이 소유한다** — 설정 창도 같은
+/// 방식으로 쓴다. 저장 직전에 현재 파일을 다시 읽어 합치므로, 그 사이 다른 창이 바꾼 값을 덮지 않는다.
+unsafe fn save_ui_state(hwnd: HWND) {
+    let Some((view, show_threads, hide_pseudo, col_w)) =
+        with_state_ret(|st| (st.view, st.show_threads, st.hide_pseudo, st.col_w.clone()))
+    else {
+        return;
+    };
+    let mut cfg = crate::config::load();
+    cfg.view_mode = match view {
+        1 => "tree",
+        2 => "flat",
+        _ => "grouped",
+    }
+    .to_string();
+    cfg.show_threads = show_threads;
+    cfg.hide_pseudo = hide_pseudo;
+    cfg.col_w = col_w;
+    // 최대화·최소화 상태의 좌표를 저장하면 다음 실행이 이상해진다 — **보통 상태**의 위치를 쓴다.
+    let mut wp = WINDOWPLACEMENT {
+        length: std::mem::size_of::<WINDOWPLACEMENT>() as u32,
+        ..Default::default()
+    };
+    if GetWindowPlacement(hwnd, &mut wp).is_ok() {
+        let r = wp.rcNormalPosition;
+        cfg.win_x = r.left;
+        cfg.win_y = r.top;
+        cfg.win_w = r.right - r.left;
+        cfg.win_h = r.bottom - r.top;
+    }
+    let _ = crate::config::save(&cfg);
+}
+
 /// 정렬 화살표(▲▼)가 차지하는 폭 — 제목과 겹치지 않게 항상 따로 확보한다.
 const ARROW_W: i32 = 16;
 /// 셀 좌우 안쪽 여백.
@@ -1270,7 +1389,12 @@ unsafe fn measure(dc: Option<(HDC, HFONT)>, s: &str) -> i32 {
 /// ① 고정 열 최소 폭 = 제목 실측 폭 + 여백(+ **정렬 중인 열만** 화살표 자리)
 /// ② 이름 열이 남는 폭을 흡수하되 최소 90px
 /// ③ 그래도 창을 넘치면 고정 열을 최소 폭까지 **비례 축소**해 마지막 열이 잘리지 않게 한다
-unsafe fn col_bounds_dc(dc: Option<(HDC, HFONT)>, width: i32, skey: SortKey) -> Vec<(i32, i32)> {
+unsafe fn col_bounds_dc(
+    dc: Option<(HDC, HFONT)>,
+    width: i32,
+    skey: SortKey,
+    col_w: &[i32],
+) -> Vec<(i32, i32)> {
     let mins: Vec<i32> = COLS
         .iter()
         .map(|c| {
@@ -1278,10 +1402,17 @@ unsafe fn col_bounds_dc(dc: Option<(HDC, HFONT)>, width: i32, skey: SortKey) -> 
             measure(dc, mk_core::tr(c.0)) + arrow + CELL_PAD * 2
         })
         .collect();
+    // 사용자가 조절한 폭이 있으면 그것을 쓰되, 머리글이 잘리지 않도록 최소 폭은 지킨다(M3-4).
     let mut widths: Vec<i32> = COLS
         .iter()
         .enumerate()
-        .map(|(i, c)| if i == 0 { 0 } else { c.3.max(mins[i]) })
+        .map(|(i, c)| {
+            if i == 0 {
+                0
+            } else {
+                col_w.get(i - 1).copied().unwrap_or(c.3).max(mins[i])
+            }
+        })
         .collect();
 
     let avail = (width - CELL_PAD * 2).max(120);
@@ -1316,10 +1447,10 @@ unsafe fn col_bounds_dc(dc: Option<(HDC, HFONT)>, width: i32, skey: SortKey) -> 
 
 /// 히트 테스트용 — 창 DC로 같은 폭을 재현한다(그리기와 어긋나면 클릭 위치가 밀린다).
 unsafe fn col_bounds_for(hwnd: HWND, width: i32) -> Vec<(i32, i32)> {
-    let (font, skey) = with_state_ret(|st| (st.font_head, st.sort_key))
-        .unwrap_or((HFONT::default(), SortKey::PrivateWs));
+    let (font, skey, col_w) = with_state_ret(|st| (st.font_head, st.sort_key, st.col_w.clone()))
+        .unwrap_or((HFONT::default(), SortKey::PrivateWs, Vec::new()));
     let dc = GetDC(Some(hwnd));
-    let bounds = col_bounds_dc(Some((dc, font)), width, skey);
+    let bounds = col_bounds_dc(Some((dc, font)), width, skey, &col_w);
     ReleaseDC(Some(hwnd), dc);
     bounds
 }
@@ -1432,9 +1563,9 @@ unsafe fn paint(hwnd: HWND) {
         bg,
     );
     let head_font = with_state_ret(|st| st.font_head).unwrap();
-    let (skey, sasc) =
-        with_state_ret(|st| (st.sort_key, st.sort_asc)).unwrap_or((SortKey::PrivateWs, false));
-    let cols = col_bounds_dc(Some((mem, head_font)), w, skey);
+    let (skey, sasc, col_w) = with_state_ret(|st| (st.sort_key, st.sort_asc, st.col_w.clone()))
+        .unwrap_or((SortKey::PrivateWs, false, Vec::new()));
+    let cols = col_bounds_dc(Some((mem, head_font)), w, skey, &col_w);
 
     // ── 헤더(정렬 표시 포함)
     fill(

@@ -74,6 +74,15 @@ pub struct Settings {
     pub view_mode: String,
     /// 쓰레드 행 표시 — 기본 off(작업 관리자처럼 프로세스 계층만).
     pub show_threads: bool,
+    /// 메인 창 위치·크기(M3-4). `-1` = 미지정(기본 위치에 띄운다).
+    /// 화면 구성이 바뀌어 화면 밖이 되는 경우가 있어, **복원할 때 보이는 영역인지 확인**한다.
+    pub win_x: i32,
+    pub win_y: i32,
+    pub win_w: i32,
+    pub win_h: i32,
+    /// 고정 열 폭(PID·Private·Working Set·Threads 순, px). 비어 있으면 기본값.
+    /// 이름 열은 남는 폭을 흡수하므로 저장 대상이 아니다(M3-4).
+    pub col_w: Vec<i32>,
     /// 우리가 모르는 키 원문(섹션 → "키=값" 목록) — 왕복 보존용.
     unknown: BTreeMap<String, Vec<String>>,
 }
@@ -98,6 +107,11 @@ impl Default for Settings {
             hide_pseudo: true,
             view_mode: "grouped".to_string(),
             show_threads: false,
+            win_x: -1,
+            win_y: -1,
+            win_w: -1,
+            win_h: -1,
+            col_w: Vec::new(),
             unknown: BTreeMap::new(),
         }
     }
@@ -105,6 +119,10 @@ impl Default for Settings {
 
 fn clamp(v: u32, lo: u32, hi: u32) -> u32 {
     v.clamp(lo, hi)
+}
+
+fn parse_i32(s: &str) -> Option<i32> {
+    s.trim().parse::<i32>().ok()
 }
 
 fn parse_bool(s: &str) -> Option<bool> {
@@ -214,6 +232,17 @@ impl Settings {
                     None => self.view_mode.clone(),
                 }
             }
+            ("ui", "win_x") => self.win_x = parse_i32(value).unwrap_or(self.win_x),
+            ("ui", "win_y") => self.win_y = parse_i32(value).unwrap_or(self.win_y),
+            ("ui", "win_w") => self.win_w = parse_i32(value).unwrap_or(self.win_w),
+            ("ui", "win_h") => self.win_h = parse_i32(value).unwrap_or(self.win_h),
+            ("ui", "col_w") => {
+                let cols: Vec<i32> = value
+                    .split(',')
+                    .filter_map(|v| parse_i32(v.trim()))
+                    .collect();
+                self.col_w = cols;
+            }
             ("ui", "show_threads") => {
                 self.show_threads = parse_bool(value).unwrap_or(self.show_threads)
             }
@@ -240,6 +269,19 @@ impl Settings {
         }
         self.topn = clamp(self.topn, 3, 10);
         self.list_refresh_ms = clamp(self.list_refresh_ms, 500, 10_000);
+        // 창 크기가 0에 가깝게 저장되면 복원했을 때 쓸 수 없는 창이 된다 — 최소치를 보장한다.
+        if self.win_w > 0 || self.win_h > 0 {
+            self.win_w = self.win_w.max(420);
+            self.win_h = self.win_h.max(300);
+        }
+        // 열 폭은 **개수가 맞을 때만** 인정한다(열이 늘거나 준 버전의 파일을 그대로 믿지 않는다).
+        if self.col_w.len() != 4 {
+            self.col_w.clear();
+        } else {
+            for w in &mut self.col_w {
+                *w = (*w).clamp(40, 400);
+            }
+        }
     }
 
     /// 설정 → ini 텍스트(알 수 없는 키는 해당 섹션 끝에 원문 그대로 되돌린다).
@@ -284,6 +326,18 @@ impl Settings {
         out.push_str(&format!("hide_pseudo = {}\n", b(self.hide_pseudo)));
         out.push_str(&format!("view_mode = {}\n", self.view_mode));
         out.push_str(&format!("show_threads = {}\n", b(self.show_threads)));
+        // 창 위치·열 폭은 사람이 손으로 고칠 값이 아니라 창이 기억해 두는 값이다(M3-4).
+        // 미지정(-1)이면 쓰지 않는다 — 파일이 기본값으로 지저분해지지 않게.
+        if self.win_w > 0 && self.win_h > 0 {
+            out.push_str(&format!("win_x = {}\n", self.win_x));
+            out.push_str(&format!("win_y = {}\n", self.win_y));
+            out.push_str(&format!("win_w = {}\n", self.win_w));
+            out.push_str(&format!("win_h = {}\n", self.win_h));
+        }
+        if !self.col_w.is_empty() {
+            let cols: Vec<String> = self.col_w.iter().map(|v| v.to_string()).collect();
+            out.push_str(&format!("col_w = {}\n", cols.join(",")));
+        }
         self.push_unknown(&mut out, "ui");
 
         // 우리가 모르는 섹션 전체도 보존
