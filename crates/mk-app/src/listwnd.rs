@@ -755,7 +755,7 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
             sync_scrollbar(hwnd);
             let _ = InvalidateRect(Some(hwnd), None, false);
         }
-        ID_CLEAR_FILTER => set_filter(hwnd, None),
+        ID_CLEAR_FILTER => clear_search(hwnd), // 검색칸까지 함께 비운다(08-07 QA)
         ID_HIDE_PSEUDO => {
             with_state(|st| {
                 st.hide_pseudo = !st.hide_pseudo;
@@ -1054,23 +1054,6 @@ unsafe fn clear_search(hwnd: HWND) {
         let _ = SetFocus(Some(e));
     }
     on_search_changed(hwnd);
-}
-
-/// 검색어 갱신 — `None` = 전체 지움, `Some(None)` = 한 글자 지움, `Some(Some(c))` = 한 글자 추가.
-unsafe fn set_filter(hwnd: HWND, edit: Option<Option<char>>) {
-    with_state(|st| {
-        match edit {
-            None => st.filter.clear(),
-            Some(None) => {
-                st.filter.pop();
-            }
-            Some(Some(c)) => st.filter.push(c),
-        }
-        st.top = 0;
-    });
-    reload();
-    sync_scrollbar(hwnd);
-    let _ = InvalidateRect(Some(hwnd), None, false);
 }
 
 unsafe fn act(hwnd: HWND, ok: bool) {
