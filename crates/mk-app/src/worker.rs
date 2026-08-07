@@ -39,27 +39,66 @@ extern "system" {
 }
 
 const SYSTEM_MEMORY_LIST_INFORMATION: i32 = 80;
-/// SYSTEM_MEMORY_LIST_COMMAND::MemoryPurgeLowPriorityStandbyList
-const MEMORY_PURGE_LOW_PRIORITY_STANDBY_LIST: u32 = 5;
+// SYSTEM_MEMORY_LIST_COMMAND (docs/07 §4-2)
+const MEMORY_EMPTY_WORKING_SETS: u32 = 2; // ⑤ 시스템 워킹셋
+const MEMORY_FLUSH_MODIFIED_LIST: u32 = 3; // ④ 수정 페이지 플러시
+const MEMORY_PURGE_STANDBY_LIST: u32 = 4; // ③ 전체 스탠바이 퍼지
+const MEMORY_PURGE_LOW_PRIORITY_STANDBY_LIST: u32 = 5; // ② 우선순위 0 퍼지
 
 /// `--worker clean` 진입점 — 종료 코드 반환(셸이 decode_clean_result로 해석).
 /// 진단 1줄을 stderr에 남긴다(콘솔 실행 시 QA용, GUI 기동 시 보이지 않음).
 pub fn run_clean() -> u32 {
     unsafe {
+        // 워커는 설정을 **읽기만** 한다(DR-7). 켜진 영역만 수행하고, 권한 부족으로 건너뛴 영역이
+        // 하나라도 있으면 partial로 보고한다(조용한 성공 금지 — docs/07 §5).
+        let s = crate::config::load();
         enable_privileges();
         let before = avail_bytes();
-        let (trimmed, skipped) = trim_working_sets();
-        // 영역 ②: SeProfileSingleProcessPrivilege 필요 — 실패 = partial(조용한 성공 금지)
-        let status = purge_standby_low();
+
+        let (mut trimmed, mut skipped) = (0, 0);
+        if s.areas.working_sets {
+            let r = trim_working_sets(); // ①
+            trimmed = r.0;
+            skipped = r.1;
+        }
+        let mut partial = false;
+        let mut log = String::new();
+        for (on, cmd, name) in [
+            (
+                s.areas.standby_low,
+                MEMORY_PURGE_LOW_PRIORITY_STANDBY_LIST,
+                "standby_low",
+            ),
+            (
+                s.areas.standby_all,
+                MEMORY_PURGE_STANDBY_LIST,
+                "standby_all",
+            ),
+            (s.areas.modified, MEMORY_FLUSH_MODIFIED_LIST, "modified"),
+            (s.areas.system_ws, MEMORY_EMPTY_WORKING_SETS, "system_ws"),
+        ] {
+            if !on {
+                continue;
+            }
+            let status = memory_list_command(cmd);
+            if status != 0 {
+                partial = true;
+            }
+            log.push_str(&format!(" {name}=0x{status:08X}"));
+        }
+        if s.areas.combine {
+            partial = true; // ⑥ 페이지 결합은 M5 — 켜져 있으면 생략을 알린다
+            log.push_str(" combine=미구현(M5)");
+        }
+
         let after = avail_bytes();
         let mb = after.saturating_sub(before) / (1024 * 1024);
         eprintln!(
-            "clean: trimmed={trimmed} skipped={skipped} purge_status=0x{status:08X} \
-             avail {}MB -> {}MB (+{mb}MB)",
+            "clean: trimmed={trimmed} skipped={skipped}{log} avail {}MB -> {}MB (+{mb}MB)",
             before / (1024 * 1024),
             after / (1024 * 1024)
         );
-        mk_core::encode_clean_result(mb, status != 0)
+        mk_core::encode_clean_result(mb, partial)
     }
 }
 
@@ -240,9 +279,9 @@ unsafe extern "system" fn close_proc(hwnd: HWND, lp: LPARAM) -> BOOL {
     true.into()
 }
 
-/// 영역 ② — 우선순위 0 스탠바이 퍼지. 반환 = NTSTATUS(0 = 성공).
-unsafe fn purge_standby_low() -> i32 {
-    let mut cmd: u32 = MEMORY_PURGE_LOW_PRIORITY_STANDBY_LIST;
+/// 영역 ②③④⑤ 공통 — `SystemMemoryListInformation` 명령 1개 실행. 반환 = NTSTATUS(0 = 성공).
+unsafe fn memory_list_command(command: u32) -> i32 {
+    let mut cmd: u32 = command;
     NtSetSystemInformation(
         SYSTEM_MEMORY_LIST_INFORMATION,
         &mut cmd as *mut u32 as *mut core::ffi::c_void,

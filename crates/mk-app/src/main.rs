@@ -3,11 +3,15 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 #[cfg(windows)]
+mod config;
+#[cfg(windows)]
 mod listwnd;
 #[cfg(windows)]
 mod popup;
 #[cfg(windows)]
 mod procs;
+#[cfg(windows)]
+mod settingswnd;
 #[cfg(windows)]
 mod shell;
 #[cfg(windows)]
@@ -44,6 +48,7 @@ fn main() {
             let code = match (action, pid) {
                 ("clean", _) => worker::run_clean(),
                 ("list", _) => listwnd::run(),
+                ("settings", _) => settingswnd::run(),
                 ("trim", Some(pid)) => worker::run_trim(pid),
                 ("kill", Some(pid)) => worker::run_kill(pid),
                 ("killtree", Some(pid)) => worker::run_kill_tree(pid),
