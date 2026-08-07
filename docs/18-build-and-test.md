@@ -27,6 +27,16 @@ cargo build --release
 
 - 프로파일([Cargo.toml](../Cargo.toml)): `opt-level=3`·`lto=fat`·`codegen-units=1`·`panic=abort`·`strip=symbols` — `nexa-dir2` 검증 설정 계승(성능 우선, DR-4).
 
+### 3-1. 코드 수정 후 재기동 (사용자 확정 08-07 — 매 수정 사이클의 마지막 단계)
+
+**코드를 고쳤으면 릴리스 빌드 → 실행 중이면 중지 → 재실행**까지 한 번에 수행한다. 사용자가 트레이에서 곧바로 실기 확인을 하므로, 예전 바이너리가 상주해 있으면 안 된다(디버그 빌드는 콘솔이 뜨고 예산 수치도 달라 실기 확인 기준이 될 수 없다). 문서만 고친 경우는 불필요.
+
+```powershell
+cargo build --release
+Stop-Process -Name mk-app -Confirm:$false -ErrorAction SilentlyContinue
+Start-Process target\release\mk-app.exe
+```
+
 ## 4. 예산 실측 (DR-8 게이트 — 마일스톤 완료 전 필수)
 
 | 게이트 | 기준 | 측정 |
