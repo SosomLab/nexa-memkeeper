@@ -258,8 +258,12 @@ const KO: &[(&str, &str)] = &[
         "⑤ 시스템 워킹셋 — 캐시 재적재 비용",
     ),
     (
-        "(6) Page combining — slow (planned)",
-        "⑥ 페이지 결합 — 느림 (M5 예정)",
+        "(6) Page combining — slow, admin only",
+        "⑥ 페이지 결합 — 느림, 관리자 전용",
+    ),
+    (
+        "Also clean when Windows signals low memory",
+        "Windows가 메모리 부족을 알리면 함께 정리",
     ),
     (
         "(3)~(6) need administrator rights and may cause a brief slowdown.",

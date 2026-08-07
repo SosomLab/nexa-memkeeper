@@ -7,7 +7,7 @@ use std::time::Instant;
 
 use mk_core::{level_with, Level, MemSnapshot};
 use windows::core::{w, PCWSTR};
-use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Foundation::{COLORREF, HANDLE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     CreateBitmap, CreateCompatibleBitmap, CreateCompatibleDC, CreateFontW, CreateSolidBrush,
     DeleteDC, DeleteObject, DrawTextW, FillRect, GetDC, PatBlt, ReleaseDC, SelectObject, SetBkMode,
@@ -17,6 +17,10 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Memory::{
+    CreateMemoryResourceNotification, LowMemoryResourceNotification,
+    QueryMemoryResourceNotification,
+};
 use windows::Win32::System::ProcessStatus::K32EmptyWorkingSet;
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
@@ -76,6 +80,10 @@ thread_local! {
     static LAST_CLEAN: Cell<Option<(Instant, u32)>> = const { Cell::new(None) };
     /// 전역 핫키 등록 여부(M4-2) — 재설정 전 해제해야 하므로 상태를 들고 있는다.
     static HOTKEY_ON: Cell<bool> = const { Cell::new(false) };
+    /// 저메모리 알림 핸들(M5-1) — 한 번 만들어 두고 폴링 때마다 상태만 물어본다.
+    /// 대기 스레드를 쓰지 않는 이유: 스레드 하나가 유휴 예산(DR-8)을 갉아먹고, 이미 도는
+    /// 폴링 타이머에 질의 1콜을 얹는 편이 싸다(질의는 커널 플래그 읽기 수준).
+    static LOWMEM: Cell<Option<HANDLE>> = const { Cell::new(None) };
 }
 
 /// 전역 핫키 ID(이 창에서 유일하면 된다).
@@ -338,10 +346,31 @@ unsafe fn auto_clean_if_due(hwnd: HWND) {
         .map(|(at, _)| at.elapsed().as_millis() as u64)
         .unwrap_or(u64::MAX);
     let percent = read_mem().used_percent();
-    let due = SETTINGS.with(|c| mk_core::should_auto_clean(&c.borrow(), percent, since));
+    let low = low_memory_now();
+    let due = SETTINGS.with(|c| mk_core::should_auto_clean_with(&c.borrow(), percent, since, low));
     if due {
         spawn_clean(hwnd);
     }
+}
+
+/// Windows가 "여유 메모리 부족"을 알리고 있는가(M5-1 — docs/07 §2).
+///
+/// `CreateMemoryResourceNotification`은 **핸들 1개**를 만들고, 질의는 커널이 들고 있는 플래그를
+/// 읽어 오는 수준이라 폴링에 얹어도 부담이 없다. 만들지 못하면(정책·오래된 OS) 조용히 false —
+/// 임계값·주기 트리거는 그대로 동작한다.
+unsafe fn low_memory_now() -> bool {
+    let h = match LOWMEM.get() {
+        Some(h) => h,
+        None => {
+            let Ok(h) = CreateMemoryResourceNotification(LowMemoryResourceNotification) else {
+                return false;
+            };
+            LOWMEM.set(Some(h));
+            h
+        }
+    };
+    let mut low = windows::core::BOOL(0);
+    QueryMemoryResourceNotification(h, &mut low).is_ok() && low.as_bool()
 }
 
 /// 설정 창(워커 프로세스)이 저장 후 호출 — 상주 셸을 찾아 재적용을 알린다.

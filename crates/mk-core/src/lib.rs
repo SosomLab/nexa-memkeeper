@@ -57,11 +57,27 @@ pub fn level_with(used_percent: u32, warn: u32, danger: u32) -> Level {
 /// 자동 정리를 지금 실행해야 하는가(FR-4 트리거) — 임계값·쿨다운·주기를 한 곳에서 판정한다.
 /// `since_last_ms` = 마지막 정리 이후 경과(ms — 설정과 같은 단위). 이력이 없으면 `u64::MAX`.
 pub fn should_auto_clean(s: &Settings, used_percent: u32, since_last_ms: u64) -> bool {
+    should_auto_clean_with(s, used_percent, since_last_ms, false)
+}
+
+/// 위와 같되 **저메모리 이벤트**(Windows의 `LowMemoryResourceNotification`)를 함께 본다.
+///
+/// 이벤트는 폴링의 보조다 — 임계값에 못 미쳐도 OS가 부족을 알리면 즉시 돈다. 다만 **쿨다운은
+/// 그대로 지킨다**: 부족 상태는 한동안 계속 켜져 있어서, 안 그러면 폴링마다 정리가 반복된다.
+pub fn should_auto_clean_with(
+    s: &Settings,
+    used_percent: u32,
+    since_last_ms: u64,
+    low_memory: bool,
+) -> bool {
     if !s.auto_enabled {
         return false;
     }
     if since_last_ms < s.cooldown_ms as u64 {
         return false; // 쿨다운 중 — 임계값을 넘겨도 참는다(진동 방지)
+    }
+    if low_memory && s.low_memory_event {
+        return true;
     }
     if used_percent >= s.threshold_percent {
         return true;
@@ -1079,6 +1095,26 @@ mod tests {
             window_titles: vec![title.to_string()],
             ..p(pid, name, 100)
         }
+    }
+
+    #[test]
+    fn low_memory_event_triggers_but_respects_cooldown() {
+        // 08-07 M5-1: OS가 부족을 알리면 임계값 미만이어도 돈다. 단 쿨다운 중에는 참는다
+        // (부족 상태는 한동안 켜져 있어 폴링마다 반복 실행될 수 있다).
+        let mut s = Settings::default();
+        s.threshold_percent = 90;
+        s.cooldown_ms = 300_000;
+        assert!(!should_auto_clean_with(&s, 40, u64::MAX, false));
+        assert!(should_auto_clean_with(&s, 40, u64::MAX, true));
+        assert!(
+            !should_auto_clean_with(&s, 40, 120_000, true),
+            "쿨다운 우선"
+        );
+        s.low_memory_event = false;
+        assert!(
+            !should_auto_clean_with(&s, 40, u64::MAX, true),
+            "옵션 off면 무시"
+        );
     }
 
     #[test]

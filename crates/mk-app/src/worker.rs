@@ -44,6 +44,20 @@ const MEMORY_EMPTY_WORKING_SETS: u32 = 2; // ⑤ 시스템 워킹셋
 const MEMORY_FLUSH_MODIFIED_LIST: u32 = 3; // ④ 수정 페이지 플러시
 const MEMORY_PURGE_STANDBY_LIST: u32 = 4; // ③ 전체 스탠바이 퍼지
 const MEMORY_PURGE_LOW_PRIORITY_STANDBY_LIST: u32 = 5; // ② 우선순위 0 퍼지
+/// ⑥ 페이지 결합 — `SystemCombinePhysicalMemoryInformation`(docs/07 §3). RAMMap의 "Combine memory lists"와 같은 경로.
+const SYSTEM_COMBINE_PHYSICAL_MEMORY_INFORMATION: i32 = 130;
+
+/// `MEMORY_COMBINE_INFORMATION_EX` — 커널이 결합한 **페이지 수**를 돌려준다.
+/// x64에서 24바이트(8 + 8 + 4 + 정렬 4). 크기가 틀리면 `STATUS_INFO_LENGTH_MISMATCH`가 난다.
+#[repr(C)]
+#[derive(Default)]
+struct MemoryCombineInformationEx {
+    handle: usize,
+    pages_combined: usize,
+    flags: u32,
+    _pad: u32,
+}
+const _: () = assert!(std::mem::size_of::<MemoryCombineInformationEx>() == 24);
 
 /// `--worker clean` 진입점 — 종료 코드 반환(셸이 decode_clean_result로 해석).
 /// 진단 1줄을 stderr에 남긴다(콘솔 실행 시 QA용, GUI 기동 시 보이지 않음).
@@ -87,8 +101,16 @@ pub fn run_clean() -> u32 {
             log.push_str(&format!(" {name}=0x{status:08X}"));
         }
         if s.areas.combine {
-            partial = true; // ⑥ 페이지 결합은 M5 — 켜져 있으면 생략을 알린다
-            log.push_str(" combine=미구현(M5)");
+            // ⑥ 페이지 결합 — 관리자 권한이 필요하고 수 초가 걸릴 수 있다(그래서 기본 off).
+            // 워커에서 돌리므로 셸 UI는 멈추지 않는다(DR-7).
+            let (status, pages) = combine_physical_memory();
+            if status != 0 {
+                partial = true;
+            }
+            log.push_str(&format!(
+                " combine=0x{status:08X}({}MB)",
+                pages * 4096 / (1024 * 1024)
+            ));
         }
 
         let after = avail_bytes();
@@ -277,6 +299,20 @@ unsafe extern "system" fn close_proc(hwnd: HWND, lp: LPARAM) -> BOOL {
         let _ = PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
     }
     true.into()
+}
+
+/// 영역 ⑥ — 내용이 같은 물리 페이지를 하나로 합친다. 반환 = (NTSTATUS, 합쳐진 페이지 수).
+///
+/// 일반 권한으로는 `STATUS_PRIVILEGE_NOT_HELD(0xC0000061)`로 실패한다(승격 필요 — docs/07 §4).
+/// 효과는 완만하고 소요가 길어 **기본 off**이며, 켜져 있어도 실패하면 partial로 보고한다(조용한 성공 금지).
+unsafe fn combine_physical_memory() -> (i32, usize) {
+    let mut info = MemoryCombineInformationEx::default();
+    let status = NtSetSystemInformation(
+        SYSTEM_COMBINE_PHYSICAL_MEMORY_INFORMATION,
+        &mut info as *mut _ as *mut core::ffi::c_void,
+        std::mem::size_of::<MemoryCombineInformationEx>() as u32,
+    );
+    (status, if status == 0 { info.pages_combined } else { 0 })
 }
 
 /// 영역 ②③④⑤ 공통 — `SystemMemoryListInformation` 명령 1개 실행. 반환 = NTSTATUS(0 = 성공).

@@ -4,8 +4,8 @@
 > 구 키(`poll_secs`·`cooldown_secs`·`interval_mins`)는 읽을 때 자동 환산되고 저장 시 새 키로 대체된다(1회 마이그레이션).
 >
 > **구현 상태(08-07, M4)**: 파싱·검증(mk-core `settings.rs`)·파일 I/O(mk-app `config.rs`)·설정 창 완료.
-> 미구현: `[watch]`(X-1 후보), `[exclude]`, `[auto] low_memory_event`,
-> `[areas] combine`(⑥ — M5). UI에 없는 키도 파일에 쓰면 보존되며, 구현 시 그대로 살아난다.
+> **08-07(M5-1)**: `[auto] low_memory_event`·`[areas] combine`(⑥)까지 구현 완료.
+> 미구현: `[watch]`(X-1 후보), `[exclude]`. UI에 없는 키도 파일에 쓰면 보존되며, 구현 시 그대로 살아난다.
 
 > [05 §4](05-requirements.md) 설정 스펙의 구현 상세: 키 이름·형·기본값·범위·UI 배치·적용 시점.
 > 저장 위치: exe 옆 `data\settings.ini`(포터블), 쓰기 불가 시 `%LOCALAPPDATA%\NexaMemKeeper\`(FR-5).
@@ -33,7 +33,7 @@
 | `threshold_percent` | u32 | `90` | 50~95, 5 단위 | 설정 창·자동 정리 |
 | `cooldown_ms` | u32 | `300000` | 60000~1800000 — 연속 실행 방지 | 〃 |
 | `interval_ms` | u32 | `0`(off) | 0 \| 600000~14400000 — 주기 정리(임계값과 독립) | 〃 |
-| `low_memory_event` | bool | `false` | `CreateMemoryResourceNotification` 트리거(실험적) | 〃 |
+| `low_memory_event` | bool | **`true`** | Windows의 저메모리 알림(`LowMemoryResourceNotification`)이 켜지면 임계값 미만이어도 정리. **쿨다운은 그대로 적용**(M5-1 — [07 §2](07-adr-0002-memory-reclaim.md)) | 〃 |
 | `suppress_fullscreen` | bool | `true` | 전체화면(게임·발표) 중 자동 정리 보류 — `SHQueryUserNotificationState`(후보 X-2) | 〃 |
 | `on_battery` | enum | `normal` | `normal` \| `pause`(배터리 시 자동 정리 보류) (후보 X-4) | 〃 |
 

@@ -61,6 +61,9 @@ pub struct Settings {
     pub cooldown_ms: u32,
     /// 주기 정리 간격(ms). 0 = 끔.
     pub interval_ms: u32,
+    /// **저메모리 이벤트 트리거**(docs/07 §2) — Windows가 "여유 메모리 부족"을 알릴 때 즉시 정리.
+    /// 폴링(주기·임계값)의 보조다. 쿨다운은 그대로 지켜지므로 연달아 돌지 않는다.
+    pub low_memory_event: bool,
     // [areas]
     pub areas: Areas,
     // [ui]
@@ -88,6 +91,7 @@ impl Default for Settings {
             threshold_percent: 90,
             cooldown_ms: 300_000,
             interval_ms: 0,
+            low_memory_event: true,
             areas: Areas::default(),
             topn: 5,
             list_refresh_ms: 2_000,
@@ -175,6 +179,9 @@ impl Settings {
             }
             ("auto", "cooldown_ms") => self.cooldown_ms = num.unwrap_or(self.cooldown_ms),
             ("auto", "interval_ms") => self.interval_ms = num.unwrap_or(self.interval_ms),
+            ("auto", "low_memory_event") => {
+                self.low_memory_event = parse_bool(value).unwrap_or(self.low_memory_event)
+            }
             ("areas", "working_sets") => {
                 self.areas.working_sets = parse_bool(value).unwrap_or(self.areas.working_sets)
             }
@@ -256,6 +263,10 @@ impl Settings {
         out.push_str(&format!("threshold_percent = {}\n", self.threshold_percent));
         out.push_str(&format!("cooldown_ms = {}\n", self.cooldown_ms));
         out.push_str(&format!("interval_ms = {}\n", self.interval_ms));
+        out.push_str(&format!(
+            "low_memory_event = {}\n",
+            b(self.low_memory_event)
+        ));
         self.push_unknown(&mut out, "auto");
 
         out.push_str("\n[areas]\n");

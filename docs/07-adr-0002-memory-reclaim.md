@@ -31,7 +31,7 @@
 | ③ 전체 스탠바이 퍼지 | 〃 `MemoryPurgeStandbyList=4` | 〃 | 가용 최대 증가, ⚠️ 파일 캐시 전멸 → 일시 체감 저하 |
 | ④ 수정 페이지 플러시 | 〃 `MemoryFlushModifiedList=3` | 〃 | 더티 페이지 디스크 기록 후 해제 — ⚠️ 디스크 I/O 유발 |
 | ⑤ 시스템 워킹셋 | `SetSystemFileCacheSize(-1,-1,0)` 또는 〃 `MemoryEmptyWorkingSets=2` | 관리자 + `SeIncreaseQuotaPrivilege` | 시스템 캐시 워킹셋 축소 — ⚠️ 재적재 비용 |
-| ⑥ 페이지 결합 | `NtSetSystemInformation(SystemCombinePhysicalMemoryInformation)` | 관리자 | 동일 내용 페이지 병합 — 효과 완만·소요 시간 김 |
+| ⑥ 페이지 결합 | `NtSetSystemInformation(SystemCombinePhysicalMemoryInformation)` | 관리자(권장) | 동일 내용 페이지 병합. **08-07 구현·실측: 일반 권한에서도 NTSTATUS 0으로 성공** — 349MB 결합, Available +365MB. 소요는 수 초 |
 
 - ②~⑥은 **미문서 NT API**지만 Win7 이후 십수 년간 안정적이며 RAMMap(MS 공식 Sysinternals)이 동일 경로 사용 — 사실상 준표준. OS 빌드 체크 + 실패 시 조용한 성공 금지(결과 통지에 실패 영역 명시).
 - 종료: `WM_CLOSE` 정상 요청 → 타임아웃(기본 3초) 후 `TerminateProcess` — [05 FR-3](05-requirements.md).
