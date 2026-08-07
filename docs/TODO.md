@@ -25,4 +25,6 @@
 | M4-4 | 하단 검색창 — 실시간·이름/PID·지우기 버튼·placeholder | P1 | 중 | M3-1 | ✅ 08-07 |
 | M5-1 | 영역 ⑥ 페이지 결합 + 저메모리 이벤트 트리거([07 §3](07-adr-0002-memory-reclaim.md)) | P1 | 중 | M4-1 | ✅ 08-07 |
 | M5-2 | 배포 2채널(DR-9) — 설치형 Inno(프로그램 목록·자동 실행 질문 기본 체크) + 포터블 ZIP · [20](20-packaging.md) | P0 | 대 | M4-2 | ✅ 08-07(설치본 생성은 Inno 설치 후 실검증) |
+| M5-4 | CI/CD — GitHub Actions(ci·release) + winget·choco 패키지 자산([20 §6·§7](20-packaging.md)) | P0 | 중 | M5-2 | ✅ 08-07(게시는 저장소 변수로 차단) |
+| M5-5 | 패키지 매니저 첫 등록 — winget PR 1회 · choco 계정·API 키·모더레이션 → 변수 `WINGET_PUBLISH`·`CHOCO_PUSH` on | P1 | 중 | M5-4 | ☐ **사용자 대기** |
 | M5-3 | 설치본 실검증 — Inno Setup 6 설치 후 `pack.ps1`로 setup.exe 생성 → 설치/제거 왕복([20 §5](20-packaging.md)) | P0 | 소 | M5-2 | ☐ **사용자 판단(Inno 설치)** |

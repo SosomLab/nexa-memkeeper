@@ -41,6 +41,10 @@ UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
 ; 승격 없이 사용자별 설치 — 앱의 권한 모델(asInvoker + HKCU Run)과 맞춘다
 PrivilegesRequired=lowest
+; 패키지 매니저(winget·choco)는 **승격된 세션**에서 조용히 설치한다. 그대로 사용자별 설치를 하면
+; 관리자 계정의 %LOCALAPPDATA%에 들어가 정작 사용자에게는 보이지 않는다. 그래서 명령줄 `/ALLUSERS`로
+; 전체 사용자 설치를 허용해 둔다(docs/20 §7-2). 대화형 설치는 지금처럼 사용자별이 기본.
+PrivilegesRequiredOverridesAllowed=commandline dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 Compression=lzma2/max

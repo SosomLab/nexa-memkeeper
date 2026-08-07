@@ -1,5 +1,7 @@
 # Nexa MemKeeper — 트레이 상주 초경량 메모리 최적화 도구
 
+[![CI](https://github.com/SosomLab/nexa-memkeeper/actions/workflows/ci.yml/badge.svg)](https://github.com/SosomLab/nexa-memkeeper/actions/workflows/ci.yml)
+
 > Ultra-lightweight tray-resident memory optimizer for Windows.
 
 **Nexa MemKeeper**는 시스템 트레이에 상주하며 메모리를 지속 관찰하고, 필요 없어진 메모리를 회수해 여유분을 늘려주는 Windows 도구입니다.
@@ -38,7 +40,10 @@
 | 설치형 | `NexaMemKeeper-<ver>-setup.exe` | 프로그램 목록 등록 · 자동 실행 질문(**기본 체크**) · 승격 없는 사용자별 설치 |
 | 포터블 | `NexaMemKeeper-<ver>-portable.zip` | 압축 해제 후 바로 실행 · 설정은 exe 옆 `data\settings.ini` |
 
-만들기: `pwsh packaging\pack.ps1` (예산 게이트 내장 — 절차는 [docs/20](docs/20-packaging.md))
+만들기: `pwsh packaging\pack.ps1` (예산 게이트 내장). 태그를 push하면 **GitHub Actions**가 같은 절차로
+빌드·게이트·포장하고 Release에 자산을 올린다. **winget·Chocolatey 패키지 자산도 준비되어 있으며,
+자동 게시는 저장소 변수(`WINGET_PUBLISH`·`CHOCO_PUSH`)로 켜기 전까지 동작하지 않는다** —
+절차는 [docs/20](docs/20-packaging.md).
 
 ## 문서 — 📖 [문서 홈](docs/README.md)에서 시작
 

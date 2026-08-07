@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Nexa MemKeeper — Chocolatey 패키지(포터블, docs/20-packaging.md §7).
+  설계: nupkg는 바이너리를 동봉하지 않고 GitHub Release의 포터블 ZIP을 내려받아 푼다
+        (PolyForm NC = 비-FOSS → 커뮤니티 저장소 재배포 규정상 공식 URL 다운로드가 정석).
+  버전/체크섬은 release.yml이 태그 빌드 시점에 주입한다 — 수동 편집 금지.
+-->
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>nexa-memkeeper.portable</id>
+    <version>0.0.0</version>
+    <packageSourceUrl>https://github.com/SosomLab/nexa-memkeeper/tree/main/packaging/chocolatey</packageSourceUrl>
+    <owners>SosomLab</owners>
+
+    <title>Nexa MemKeeper (Portable)</title>
+    <authors>SosomLab</authors>
+    <projectUrl>https://sosomlab.com</projectUrl>
+    <iconUrl>https://cdn.jsdelivr.net/gh/SosomLab/nexa-memkeeper@main/crates/mk-app/assets/nexa-memkeeper-1024.png</iconUrl>
+    <copyright>Copyright (c) 2026 SosomLab</copyright>
+    <licenseUrl>https://github.com/SosomLab/nexa-memkeeper/blob/main/LICENSE.md</licenseUrl>
+    <requireLicenseAcceptance>true</requireLicenseAcceptance>
+    <projectSourceUrl>https://github.com/SosomLab/nexa-memkeeper</projectSourceUrl>
+    <docsUrl>https://github.com/SosomLab/nexa-memkeeper/tree/main/docs</docsUrl>
+    <bugTrackerUrl>https://github.com/SosomLab/nexa-memkeeper/issues</bugTrackerUrl>
+    <tags>nexa-memkeeper memory optimizer ram tray windows rust portable</tags>
+    <summary>Tray-resident memory optimizer for Windows — reclaims idle memory while staying under 5 MB itself.</summary>
+    <description><![CDATA[
+**Nexa MemKeeper** keeps an eye on Windows memory from the tray and reclaims what is
+no longer needed. It is written in pure Rust on the Win32 API — no managed runtime,
+no UI framework, no external DLLs beyond the OS inbox set.
+
+### Highlights
+
+* **Tiny by design** — under 1 MB on disk, idle working set around 1.5 MB.
+  Feature code (process list, cleanup engine) runs in on-demand worker processes and
+  is released the moment you close the window.
+* **Top 5 popup** on tray click; **Task Manager-style process list** with app grouping,
+  live search by name/PID/window title, and kill process / process tree / thread.
+* **Cleanup areas you choose** — working-set trim, standby purges, modified-page flush,
+  system working set, page combining. Each one can be switched off.
+* **Automatic cleanup** on a usage threshold, on a schedule, or when Windows itself
+  signals low memory — with a cooldown so it never thrashes.
+* English/Korean UI.
+
+### Notes
+
+* This is the **portable** package: the official ZIP is downloaded and extracted into the
+  Chocolatey tools directory — no installer, no Programs and Features entry.
+* Settings live next to the exe under `data\settings.ini`. Because the whole folder is
+  removed on uninstall, **settings go with it** — use the `nexa-memkeeper` package if you
+  want them preserved across reinstalls.
+* Autostart is **not** enabled by this package — turn it on from the tray menu when you
+  want it (it writes a single `HKCU\...\Run` value, and turning it off removes that value).
+
+### License
+
+Nexa MemKeeper is released under the **PolyForm Noncommercial License 1.0.0** — free for
+personal and other noncommercial use. **Commercial use requires a separate paid license**
+— contact kiros33@sosomlab.com.
+
+Product home: https://sosomlab.com
+]]></description>
+    <releaseNotes>https://github.com/SosomLab/nexa-memkeeper/releases</releaseNotes>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

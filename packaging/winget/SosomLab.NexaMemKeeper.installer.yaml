@@ -1,0 +1,26 @@
+# winget 설치 매니페스트 — microsoft/winget-pkgs 제출용 원본(docs/20 §7).
+# {{VERSION}}/{{SHA256}}는 release.yml의 wingetcreate가 채운다. 첫 제출만 이 파일을 손으로 쓰고,
+# 이후 버전은 `wingetcreate update`가 URL·해시를 갱신한다 — 수동 편집 금지.
+PackageIdentifier: SosomLab.NexaMemKeeper
+PackageVersion: "{{VERSION}}"
+InstallerType: inno
+Scope: machine
+InstallerLocale: en-US
+InstallModes:
+  - interactive
+  - silent
+  - silentWithProgress
+InstallerSwitches:
+  # /ALLUSERS = 머신 전역 설치(winget은 승격된 세션에서 돈다 — 사용자별로 깔리면 설치 계정에만 보인다)
+  # /TASKS="" = 자동 실행 등록 생략(트레이 메뉴에서 각자 켠다)
+  Silent: /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /ALLUSERS /TASKS=""
+  SilentWithProgress: /SILENT /SUPPRESSMSGBOXES /NORESTART /SP- /ALLUSERS /TASKS=""
+UpgradeBehavior: install
+ProductCode: "{8C6A5E31-7C4B-4B2E-9F3A-2B1D0E7A94C5}_is1"
+ReleaseDate: "{{RELEASE_DATE}}"
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/SosomLab/nexa-memkeeper/releases/download/{{VERSION}}/NexaMemKeeper-{{VERSION}}-setup.exe
+    InstallerSha256: "{{SHA256}}"
+ManifestType: installer
+ManifestVersion: 1.6.0

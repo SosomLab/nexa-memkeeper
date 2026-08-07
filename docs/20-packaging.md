@@ -55,7 +55,59 @@ pwsh packaging\pack.ps1 -SkipInstaller  # ZIP만
 4. 포터블 왕복 검증: 압축 해제 → 실행 → 폴더 이동 후에도 설정 유지
 5. 태그·릴리스 노트 — 태그 push는 **사용자 승인 필수**(16 규칙)
 
-## 6. 서명 (미정)
+## 6. GitHub Actions (CI·릴리스)
+
+| 워크플로 | 트리거 | 하는 일 |
+| --- | --- | --- |
+| [`ci.yml`](../.github/workflows/ci.yml) | push·PR | windows: `fmt --check` · `clippy -D warnings` · `test` · 릴리스 빌드 · **예산 게이트 + 포터블 ZIP**(같은 `pack.ps1`) / ubuntu·macos: `test`(mk-core가 플랫폼에 얽히지 않았는지) |
+| [`release.yml`](../.github/workflows/release.yml) | 태그 `0.5.0`·`v0.5.0` push | 테스트 → 빌드 → `pack.ps1`(게이트·ZIP·**설치본**·`SHA256SUMS.txt`) → choco nupkg 팩 → **GitHub Release 생성·자산 첨부** → (조건부) 패키지 매니저 게시 |
+
+- 게이트를 CI와 로컬이 **같은 스크립트**로 태운다 — 기준이 갈라지지 않는다.
+- `windows-latest` 이미지에 Inno Setup 6이 들어 있어 러너에서 설치본까지 만들어진다.
+- 태그 push는 **사용자 승인 필수**(16 규칙). 워크플로는 준비만 되어 있다.
+
+## 7. 패키지 매니저 등록 (winget · Chocolatey)
+
+두 채널 모두 **GitHub Release 자산을 URL+체크섬으로 참조**한다. 바이너리를 패키지에 동봉하지 않는
+이유: 라이선스가 PolyForm Noncommercial(비-FOSS)이라 커뮤니티 저장소 재배포 규정상 **공식 URL
+다운로드가 정석**이고, 그래야 배포본이 한 곳(Release)에서만 갈라진다.
+
+### 7-1. 자동 게시는 기본 꺼짐 (사용자 지시 08-07)
+
+| 채널 | 켜는 조건 | 끈 상태에서 하는 일 |
+| --- | --- | --- |
+| Chocolatey | 저장소 변수 `CHOCO_PUSH=true` **+** 시크릿 `CHOCO_API_KEY` | `.nupkg`까지 만들어 아티팩트로 남김(push 안 함) |
+| winget | 저장소 변수 `WINGET_PUBLISH=true` **+** 시크릿 `WINGET_TOKEN` | 아무것도 하지 않음 |
+
+준비되면 **Settings > Secrets and variables**에 값만 넣으면 된다(워크플로 수정 불필요).
+모더레이션 승인 대기 중 이중 큐를 만들지 않으려고 기본을 꺼 뒀다.
+
+### 7-2. 왜 `/ALLUSERS`인가
+
+패키지 매니저는 **승격된 세션에서 조용히** 설치한다. 우리 설치기는 기본이 사용자별
+(`PrivilegesRequired=lowest`)이라 그대로 두면 **관리자 계정의 `%LOCALAPPDATA%`**에 깔려 정작
+사용자에게는 보이지 않는다. 그래서 `PrivilegesRequiredOverridesAllowed=commandline`을 열어 두고
+choco·winget 매니페스트가 `/ALLUSERS`를 넘긴다. 자동 실행도 `/TASKS=""`로 **끄고 설치**한다 —
+설치 계정과 사용할 계정이 다를 수 있어, 자동 실행은 각자 트레이 메뉴에서 켜는 편이 맞다.
+
+### 7-3. 패키지 구성
+
+| 파일 | 내용 |
+| --- | --- |
+| [`packaging/chocolatey/nexa-memkeeper/`](../packaging/chocolatey/nexa-memkeeper/) | 설치형. `Install-ChocolateyPackage` + Inno 무인 인자. 제거 시 설정 보존 |
+| [`packaging/chocolatey/nexa-memkeeper.portable/`](../packaging/chocolatey/nexa-memkeeper.portable/) | 포터블. ZIP을 tools에 푼다(제거 시 설정도 함께 사라짐 — 설명에 명시) |
+| [`packaging/winget/`](../packaging/winget/) | winget 매니페스트 3종(version·installer·locale). 첫 제출용 원본이며 이후 버전은 `wingetcreate update`가 URL·해시를 갱신 |
+
+`{{VERSION}}`·`{{CHECKSUM64}}` 자리표시자는 **릴리스 워크플로가 태그 시점에 치환**한다. 손으로 채우지 않는다.
+
+### 7-4. 첫 등록에 필요한 사람 손 (자동화 밖)
+
+1. **Release가 먼저** — 매니페스트가 참조할 자산 URL·해시가 있어야 한다.
+2. **winget**: `microsoft/winget-pkgs`에 최초 PR 1회(계정·포크 필요). 이후는 `wingetcreate`가 갱신.
+3. **Chocolatey**: 계정 + API 키 발급 → 첫 패키지는 **모더레이션 심사**(무서명 설치본은 지적이 잦다).
+4. 심사 통과 후 저장소 변수 `CHOCO_PUSH` / `WINGET_PUBLISH`를 `true`로.
+
+## 8. 서명 (미정)
 
 코드 서명 인증서는 아직 없다. 확보하면 `signtool`을 `pack.ps1`의 게이트 통과 직후에 끼워 넣고,
 설치본 서명 → SmartScreen 평판 축적 순으로 간다. 그 전까지 포터블 ZIP이 실질적인 1차 채널이다.

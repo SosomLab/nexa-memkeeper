@@ -2,7 +2,16 @@
 
 > 최신이 맨 위(시간 역순, 같은 날 여러 건이면 "N차"로 스택). 상세는 [journal/](journal/), 여기는 요약만.
 
-## 2026-08-07 21차 — M5-1 영역 ⑥ · 저메모리 이벤트
+## 2026-08-07 22차 — CI/CD · 패키지 매니저 등록 자산
+
+- **GitHub Actions 2종**: `ci.yml`(push·PR — fmt·clippy·test·예산 게이트), `release.yml`(태그 push — 포장 → Release 첨부).
+- **winget·Chocolatey 자산 완비**(choco 2패키지 + winget 매니페스트 3종). 바이너리 미동봉, Release 자산을 URL+SHA256으로 참조.
+- 🔴 **자동 게시는 꺼져 있다** — 저장소 변수 `CHOCO_PUSH`·`WINGET_PUBLISH`가 `true`일 때만 게시(사용자 지시 08-07).
+- **DLL 게이트가 실제로 동작하게 됐다**(그동안 dumpbin 미탐지로 건너뜀) — 외부 DLL **0** 확인.
+- 실측: exe 0.64MB · ZIP 356KB · 테스트 55 green · 유휴 RSS 1.30MB.
+- 상세 → [journal/2026-08-07](journal/2026-08-07.md)
+
+## 직전(2026-08-07 21차) — M5-1 영역 ⑥ · 저메모리 이벤트
 
 - **단계: M0~M4 + M5-1·M5-2 완료.** M5 잔여 = 설치본 실검증(M5-3, Inno 설치 필요).
 - **정리 영역 ⑥(페이지 결합)** 구현 — 일반 권한에서도 성공(실측 349MB 결합 · Available **+365MB**). ADR의 권한 표기 정정.
