@@ -25,20 +25,24 @@ use windows::Win32::System::Registry::{
     HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_SZ,
 };
 use windows::Win32::UI::Controls::SetScrollInfo;
+use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::Input::KeyboardAndMouse::VK_F5;
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CheckMenuItem, CreateMenu, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
-    DestroyMenu, DestroyWindow, DispatchMessageW, GetClientRect, GetCursorPos, GetMessageW,
-    GetScrollInfo, KillTimer, LoadCursorW, LoadIconW, MessageBoxW, PostQuitMessage, RegisterClassW,
-    SetForegroundWindow, SetMenu, SetTimer, ShowWindow, TrackPopupMenu, TranslateMessage,
-    CW_USEDEFAULT, HMENU, IDC_ARROW, IDYES, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_YESNO,
-    MF_BYCOMMAND, MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING, MF_UNCHECKED, MSG,
-    SB_BOTTOM, SB_LINEDOWN, SB_LINEUP, SB_PAGEDOWN, SB_PAGEUP, SB_THUMBPOSITION, SB_THUMBTRACK,
-    SB_TOP, SB_VERT, SCROLLINFO, SCROLLINFO_MASK, SIF_PAGE, SIF_POS, SIF_RANGE, SIF_TRACKPOS,
-    SW_SHOWNORMAL, TPM_RETURNCMD, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WM_CHAR, WM_COMMAND, WM_CREATE,
-    WM_DESTROY, WM_KEYDOWN, WM_LBUTTONDOWN, WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONUP, WM_SIZE,
-    WM_TIMER, WM_VSCROLL, WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_VISIBLE, WS_VSCROLL,
+    DestroyMenu, DestroyWindow, DispatchMessageW, GetClientRect, GetCursorPos, GetDlgItem,
+    GetMessageW, GetScrollInfo, GetWindowTextLengthW, GetWindowTextW, KillTimer, LoadCursorW,
+    LoadIconW, MessageBoxW, MoveWindow, PostQuitMessage, RegisterClassW, SendMessageW,
+    SetForegroundWindow, SetMenu, SetTimer, SetWindowTextW, ShowWindow, TrackPopupMenu,
+    TranslateMessage, BS_FLAT, CW_USEDEFAULT, ES_AUTOHSCROLL, HMENU, IDC_ARROW, IDYES,
+    MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_YESNO, MF_BYCOMMAND, MF_CHECKED, MF_GRAYED,
+    MF_POPUP, MF_SEPARATOR, MF_STRING, MF_UNCHECKED, MSG, SB_BOTTOM, SB_LINEDOWN, SB_LINEUP,
+    SB_PAGEDOWN, SB_PAGEUP, SB_THUMBPOSITION, SB_THUMBTRACK, SB_TOP, SB_VERT, SCROLLINFO,
+    SCROLLINFO_MASK, SIF_PAGE, SIF_POS, SIF_RANGE, SIF_TRACKPOS, SW_HIDE, SW_SHOW, SW_SHOWNORMAL,
+    TPM_RETURNCMD, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CHAR, WM_COMMAND, WM_CREATE,
+    WM_DESTROY, WM_KEYDOWN, WM_LBUTTONDOWN, WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONUP, WM_SETFONT,
+    WM_SIZE, WM_TIMER, WM_VSCROLL, WNDCLASSW, WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW,
+    WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 
 const CLASS: PCWSTR = w!("NexaMemKeeperList");
@@ -46,6 +50,20 @@ const TIMER_REFRESH: usize = 20;
 const ROW_H: i32 = 22;
 const HEAD_H: i32 = 26;
 const STATUS_H: i32 = 24;
+/// 하단 검색 줄 높이(사용자 요청 08-07 — 실시간 검색 입력 칸).
+const SEARCH_H: i32 = 30;
+/// 검색 칸 오른쪽 끝에 겹쳐 놓는 지우기(✕) 버튼 크기.
+const CLEAR_W: i32 = 22;
+/// 검색 입력·지우기 컨트롤 ID.
+const ID_SEARCH: usize = 300;
+const ID_SEARCH_CLEAR: usize = 301;
+/// EDIT 알림 코드(EN_CHANGE) — 입력이 바뀔 때마다 온다 = 실시간 검색.
+const EN_CHANGE: u32 = 0x0300;
+/// `EM_SETMARGINS` + `EC_RIGHTMARGIN` — 지우기 버튼 아래로 글자가 들어가지 않게 여백 확보.
+const EM_SETMARGINS: u32 = 0x00D3;
+/// `EM_SETCUEBANNER`(공용 컨트롤) — 빈 입력일 때 흐린 안내 문구.
+const EM_SETCUEBANNER: u32 = 0x1501;
+const EC_RIGHTMARGIN: u32 = 0x0002;
 
 // 메뉴 명령 ID
 const ID_REFRESH: usize = 200;
@@ -120,7 +138,7 @@ struct ListState {
 
 impl ListState {
     fn visible_rows(&self) -> i32 {
-        ((self.client.bottom - HEAD_H - STATUS_H) / ROW_H).max(1)
+        ((self.client.bottom - HEAD_H - STATUS_H - SEARCH_H) / ROW_H).max(1)
     }
     fn max_top(&self) -> i32 {
         (self.rows.len() as i32 - self.visible_rows()).max(0)
@@ -368,6 +386,8 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
             });
             reload();
             sync_menu_checks(menu, cfg.list_refresh_ms, cfg.hide_pseudo, cfg.view_flat);
+            create_search(hwnd, make_font(-12, 400));
+            layout_search(hwnd);
             SetTimer(Some(hwnd), TIMER_REFRESH, cfg.list_refresh_ms, None);
             sync_scrollbar(hwnd);
             LRESULT(0)
@@ -377,6 +397,7 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                 let _ = GetClientRect(hwnd, &mut st.client);
                 st.top = st.top.min(st.max_top());
             });
+            layout_search(hwnd);
             sync_scrollbar(hwnd);
             let _ = InvalidateRect(Some(hwnd), None, false);
             LRESULT(0)
@@ -388,13 +409,14 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
             LRESULT(0)
         }
         // 창에 그냥 타이핑 = 이름 검색(별도 입력 상자 없이 — 커스텀 드로잉 창의 관용구)
+        // 목록에 포커스가 있을 때 타이핑하면 **검색 칸으로 넘긴다**(입력 상태를 한 곳에만 둔다)
         WM_CHAR => {
             let ch = char::from_u32(wp.0 as u32).unwrap_or('\0');
-            match ch {
-                '\u{8}' => set_filter(hwnd, Some(None)), // Backspace = 한 글자 지움
-                '\u{1B}' => set_filter(hwnd, None),      // Esc = 전체 지움
-                c if !c.is_control() => set_filter(hwnd, Some(Some(c))),
-                _ => {}
+            if ch == '\u{1B}' {
+                clear_search(hwnd); // Esc = 비우기
+            } else if let Some(e) = get_ctl(hwnd, ID_SEARCH) {
+                let _ = SetFocus(Some(e));
+                SendMessageW(e, WM_CHAR, Some(wp), Some(lp));
             }
             LRESULT(0)
         }
@@ -403,7 +425,15 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
             LRESULT(0)
         }
         WM_COMMAND => {
-            on_command(hwnd, wp.0 & 0xFFFF);
+            let id = wp.0 & 0xFFFF;
+            let code = ((wp.0 >> 16) & 0xFFFF) as u32;
+            if id == ID_SEARCH && code == EN_CHANGE {
+                on_search_changed(hwnd); // 실시간 검색
+            } else if id == ID_SEARCH_CLEAR {
+                clear_search(hwnd);
+            } else {
+                on_command(hwnd, id);
+            }
             LRESULT(0)
         }
         WM_PAINT => {
@@ -628,6 +658,130 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
     }
 }
 
+/// 하단 검색 줄 컨트롤 생성(사용자 요청 08-07).
+///
+/// 표준 `EDIT`를 쓰는 이유 — 한글 입력(IME)·캐럿·선택·클립보드를 OS가 처리한다. 커스텀 드로잉으로
+/// 흉내 내면 IME 조합 중 글자가 깨진다. 지우기 버튼은 **에디트 위에 겹쳐** 놓고(나중에 만든 자식이
+/// 위에 그려진다) 입력이 있을 때만 보인다.
+unsafe fn create_search(hwnd: HWND, font: HFONT) {
+    let edit = CreateWindowExW(
+        WS_EX_CLIENTEDGE,
+        w!("EDIT"),
+        w!(""),
+        WINDOW_STYLE(WS_CHILD.0 | WS_VISIBLE.0 | WS_TABSTOP.0 | ES_AUTOHSCROLL as u32),
+        0,
+        0,
+        10,
+        10,
+        Some(hwnd),
+        Some(HMENU(ID_SEARCH as isize as *mut _)),
+        None,
+        None,
+    );
+    if let Ok(e) = edit {
+        SendMessageW(
+            e,
+            WM_SETFONT,
+            Some(WPARAM(font.0 as usize)),
+            Some(LPARAM(1)),
+        );
+        // 오른쪽 여백 = 지우기 버튼 폭(글자가 버튼 밑으로 숨지 않게)
+        SendMessageW(
+            e,
+            EM_SETMARGINS,
+            Some(WPARAM(EC_RIGHTMARGIN as usize)),
+            Some(LPARAM(((CLEAR_W + 2) as isize) << 16)),
+        );
+        // 안내 문구(placeholder) — 입력이 비었을 때만 흐리게 보인다. 언어 설정을 따른다.
+        let cue: Vec<u16> = mk_core::tr("Type a process name or PID")
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        SendMessageW(
+            e,
+            EM_SETCUEBANNER,
+            Some(WPARAM(0)),
+            Some(LPARAM(cue.as_ptr() as isize)),
+        );
+    }
+    if let Ok(b) = CreateWindowExW(
+        WINDOW_EX_STYLE(0),
+        w!("BUTTON"),
+        w!("✕"),
+        WINDOW_STYLE(WS_CHILD.0 | BS_FLAT as u32), // 처음엔 숨김(입력이 있을 때만 표시)
+        0,
+        0,
+        10,
+        10,
+        Some(hwnd),
+        Some(HMENU(ID_SEARCH_CLEAR as isize as *mut _)),
+        None,
+        None,
+    ) {
+        SendMessageW(
+            b,
+            WM_SETFONT,
+            Some(WPARAM(font.0 as usize)),
+            Some(LPARAM(1)),
+        );
+    }
+}
+
+/// 창 크기에 맞춰 검색 줄 배치 — 버튼은 에디트 오른쪽 안쪽에 겹친다.
+unsafe fn layout_search(hwnd: HWND) {
+    let (w, h) = with_state_ret(|st| (st.client.right, st.client.bottom)).unwrap_or((0, 0));
+    let y = h - SEARCH_H + 3;
+    if let Some(e) = get_ctl(hwnd, ID_SEARCH) {
+        let _ = MoveWindow(e, 8, y, (w - 16).max(60), SEARCH_H - 8, true);
+    }
+    if let Some(b) = get_ctl(hwnd, ID_SEARCH_CLEAR) {
+        let _ = MoveWindow(b, w - 8 - CLEAR_W - 2, y + 2, CLEAR_W, SEARCH_H - 12, true);
+    }
+}
+
+unsafe fn get_ctl(hwnd: HWND, id: usize) -> Option<HWND> {
+    let h = GetDlgItem(Some(hwnd), id as i32).ok()?;
+    (!h.is_invalid()).then_some(h)
+}
+
+/// 검색 칸의 현재 문자열.
+unsafe fn search_text(hwnd: HWND) -> String {
+    let Some(e) = get_ctl(hwnd, ID_SEARCH) else {
+        return String::new();
+    };
+    let len = GetWindowTextLengthW(e);
+    if len <= 0 {
+        return String::new();
+    }
+    let mut buf = vec![0u16; len as usize + 1];
+    let n = GetWindowTextW(e, &mut buf);
+    String::from_utf16_lossy(&buf[..n.max(0) as usize])
+}
+
+/// 검색 칸 내용 → 필터 반영(실시간). 지우기 버튼은 입력이 있을 때만 보인다.
+unsafe fn on_search_changed(hwnd: HWND) {
+    let text = search_text(hwnd);
+    if let Some(b) = get_ctl(hwnd, ID_SEARCH_CLEAR) {
+        let _ = ShowWindow(b, if text.is_empty() { SW_HIDE } else { SW_SHOW });
+    }
+    with_state(|st| {
+        st.filter = text;
+        st.top = 0;
+    });
+    reload();
+    sync_scrollbar(hwnd);
+    let _ = InvalidateRect(Some(hwnd), None, false);
+}
+
+/// 검색 칸 비우기(지우기 버튼·Esc) — 포커스는 다시 검색 칸으로.
+unsafe fn clear_search(hwnd: HWND) {
+    if let Some(e) = get_ctl(hwnd, ID_SEARCH) {
+        let _ = SetWindowTextW(e, w!(""));
+        let _ = SetFocus(Some(e));
+    }
+    on_search_changed(hwnd);
+}
+
 /// 검색어 갱신 — `None` = 전체 지움, `Some(None)` = 한 글자 지움, `Some(Some(c))` = 한 글자 추가.
 unsafe fn set_filter(hwnd: HWND, edit: Option<Option<char>>) {
     with_state(|st| {
@@ -719,7 +873,7 @@ fn reload() {
     let all = crate::procs::enumerate();
     with_state(|st| {
         let visible = mk_core::filter_pseudo(all, st.hide_pseudo);
-        st.procs = mk_core::filter_by_name(visible, &st.filter);
+        st.procs = mk_core::filter_procs(visible, &st.filter);
         rebuild(st);
     });
 }
@@ -1149,7 +1303,8 @@ unsafe fn paint(hwnd: HWND) {
         }
 
         // ── 상태 줄
-        let sy = h - STATUS_H;
+        let sy = h - STATUS_H - SEARCH_H;
+        // 상태 줄 + 검색 줄 배경(검색 칸·버튼은 자식 컨트롤이 그 위에 그린다)
         fill(
             mem,
             &RECT {
@@ -1210,7 +1365,7 @@ unsafe fn paint(hwnd: HWND) {
                 left: 8,
                 top: sy,
                 right: w - 8,
-                bottom: h,
+                bottom: sy + STATUS_H,
             },
             DT_LEFT | DT_VCENTER | DT_END_ELLIPSIS,
             fg,

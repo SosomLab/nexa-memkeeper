@@ -333,15 +333,21 @@ pub fn build_rows_flat(
     out
 }
 
-/// 이름 부분 일치 필터(대소문자 무시). 빈 질의는 전체 반환.
-pub fn filter_by_name(procs: Vec<ProcInfo>, query: &str) -> Vec<ProcInfo> {
+/// 검색 필터 — **이름 부분 일치(대소문자 무시) 또는 PID 일치**. 빈 질의는 전체 반환.
+///
+/// PID는 숫자만 입력했을 때 의미가 있으므로, 질의가 전부 숫자면 PID **부분 일치**도 허용한다
+/// (`33` → 33, 336, 1330 …). 이름에 숫자가 든 프로세스(`msedgewebview2.exe`)도 함께 걸린다.
+pub fn filter_procs(procs: Vec<ProcInfo>, query: &str) -> Vec<ProcInfo> {
     let q = query.trim().to_ascii_lowercase();
     if q.is_empty() {
         return procs;
     }
+    let numeric = q.chars().all(|c| c.is_ascii_digit());
     procs
         .into_iter()
-        .filter(|p| p.name.to_ascii_lowercase().contains(&q))
+        .filter(|p| {
+            p.name.to_ascii_lowercase().contains(&q) || (numeric && p.pid.to_string().contains(&q))
+        })
         .collect()
 }
 
@@ -760,16 +766,42 @@ mod tests {
     }
 
     #[test]
-    fn filter_by_name_is_case_insensitive_substring() {
+    fn filter_matches_name_case_insensitively() {
         let procs = vec![
             p(1, "NexaMarkdownViewer.exe", 10),
             p(2, "explorer.exe", 20),
             p(3, "Code.exe", 30),
         ];
-        assert_eq!(filter_by_name(procs.clone(), "markdown").len(), 1);
-        assert_eq!(filter_by_name(procs.clone(), "EXE").len(), 3);
-        assert_eq!(filter_by_name(procs.clone(), "  ").len(), 3); // 공백만 = 전체
-        assert!(filter_by_name(procs, "zzz").is_empty());
+        assert_eq!(filter_procs(procs.clone(), "markdown").len(), 1);
+        assert_eq!(filter_procs(procs.clone(), "EXE").len(), 3);
+        assert_eq!(filter_procs(procs.clone(), "  ").len(), 3); // 공백만 = 전체
+        assert!(filter_procs(procs, "zzz").is_empty());
+    }
+
+    #[test]
+    fn filter_matches_pid_when_query_is_numeric() {
+        let procs = vec![
+            p(4772, "Slack.exe", 10),
+            p(33608, "msedge.exe", 20),
+            p(360, "svchost.exe", 30),
+        ];
+        // 정확한 PID
+        assert_eq!(
+            filter_procs(procs.clone(), "4772")
+                .iter()
+                .map(|x| x.pid)
+                .collect::<Vec<_>>(),
+            vec![4772]
+        );
+        // 부분 일치 — 336(33608)과 360 둘 다
+        let mut hit: Vec<u32> = filter_procs(procs.clone(), "36")
+            .iter()
+            .map(|x| x.pid)
+            .collect();
+        hit.sort();
+        assert_eq!(hit, vec![360, 33608]);
+        // 숫자가 아니면 PID는 보지 않는다(이름만)
+        assert!(filter_procs(procs, "47a").is_empty());
     }
 
     #[test]
