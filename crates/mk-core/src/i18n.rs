@@ -263,12 +263,16 @@ const KO: &[(&str, &str)] = &[
     ),
     (" · apps released ", " · 앱이 놓은 양 "),
     (
+        "Not recommended — apps reclaim it within ~14s.",
+        "권장하지 않음 — 앱이 14초 안에 되찾아갑니다.",
+    ),
+    (
         "Also clean when Windows signals low memory",
         "Windows가 메모리 부족을 알리면 함께 정리",
     ),
     (
-        "(3)~(6) need administrator rights and may cause a brief slowdown.",
-        "③~⑥은 관리자 권한이 필요하고 일시적 체감 저하가 있을 수 있습니다.",
+        "(3)~(6) need admin rights; brief slowdown possible.",
+        "③~⑥은 관리자 권한 필요, 일시적 체감 저하 가능.",
     ),
     ("General", "일반"),
     (
