@@ -72,6 +72,36 @@ pub fn fmt_last_clean(mb: u32, elapsed_mins: u64) -> String {
     format!("마지막 정리 {mb}MB · {ago}")
 }
 
+// ---- 프로세스 목록 (docs/05 FR-2·FR-3) ----
+
+/// 목록 1행 — 열거 결과의 플랫폼 독립 표현(수집은 mk-app, 정렬·표시는 여기).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcInfo {
+    pub pid: u32,
+    pub name: String,
+    /// 프라이빗 워킹셋(바이트) — Top N 정렬 기본 지표(docs/19 §2-2).
+    pub private_ws: u64,
+    pub ws: u64,
+    pub threads: u32,
+}
+
+/// 점유 상위 N개 — `private_ws` 내림차순, 동률은 PID 오름차순(표시 안정성).
+pub fn top_n(mut procs: Vec<ProcInfo>, n: usize) -> Vec<ProcInfo> {
+    procs.sort_by(|a, b| b.private_ws.cmp(&a.private_ws).then(a.pid.cmp(&b.pid)));
+    procs.truncate(n);
+    procs
+}
+
+/// 목록 행 용량 표기 — 1GB 미만은 MB 정수, 이상은 GB 소수 1자리.
+pub fn fmt_size(bytes: u64) -> String {
+    const GB: u64 = 1 << 30;
+    if bytes >= GB {
+        format!("{:.1} GB", bytes as f64 / GB as f64)
+    } else {
+        format!("{} MB", bytes / (1 << 20))
+    }
+}
+
 // ---- 보호 프로세스 (docs/05 §4-4 — 종료·트림 하드 제외, 해제 불가) ----
 
 /// 이미지 이름 기준 고정 보호 목록(소문자). PID 0/4·자기 자신·PPL은 호출측에서 추가 차단.
@@ -84,9 +114,14 @@ const PROTECTED: &[&str] = &[
     "smss.exe",
     "dwm.exe",
     "fontdrvhost.exe",
+    // 커널 의사 프로세스 — 커널이 주는 이름과 작업 관리자 표기가 달라 둘 다 등록(08-07 실측:
+    // NtQuerySystemInformation은 "Memory Compression"으로 준다).
     "memcompression",
+    "memory compression",
     "registry",
     "secure system",
+    "system",
+    "system idle process",
 ];
 
 /// 보호 프로세스 여부(대소문자 무시). 트림·종료 경로는 이 판정을 반드시 통과해야 한다(15 §4).
@@ -229,11 +264,62 @@ mod tests {
         assert_eq!(fmt_last_clean(5, 120), "마지막 정리 5MB · 2시간 전");
     }
 
+    fn p(pid: u32, name: &str, private_ws: u64) -> ProcInfo {
+        ProcInfo {
+            pid,
+            name: name.to_string(),
+            private_ws,
+            ws: private_ws * 2,
+            threads: 1,
+        }
+    }
+
+    #[test]
+    fn top_n_sorts_desc_and_truncates() {
+        let v = vec![
+            p(10, "a.exe", 100),
+            p(20, "b.exe", 300),
+            p(30, "c.exe", 200),
+        ];
+        let top = top_n(v, 2);
+        assert_eq!(
+            top.iter().map(|x| x.pid).collect::<Vec<_>>(),
+            vec![20, 30] // 300, 200
+        );
+    }
+
+    #[test]
+    fn top_n_ties_break_by_pid() {
+        let v = vec![p(30, "a.exe", 100), p(10, "b.exe", 100)];
+        assert_eq!(
+            top_n(v, 2).iter().map(|x| x.pid).collect::<Vec<_>>(),
+            vec![10, 30]
+        );
+    }
+
+    #[test]
+    fn top_n_handles_fewer_than_requested() {
+        assert_eq!(top_n(vec![p(1, "a.exe", 5)], 5).len(), 1);
+        assert!(top_n(Vec::new(), 5).is_empty());
+    }
+
+    #[test]
+    fn fmt_size_switches_unit_at_1gb() {
+        assert_eq!(fmt_size(0), "0 MB");
+        assert_eq!(fmt_size(512 << 20), "512 MB");
+        assert_eq!(fmt_size(1 << 30), "1.0 GB");
+        assert_eq!(fmt_size((3 << 30) + (512 << 20)), "3.5 GB");
+    }
+
     #[test]
     fn protected_matches_case_insensitive() {
         assert!(is_protected("LSASS.exe"));
         assert!(is_protected("dwm.exe"));
         assert!(is_protected("MemCompression"));
+        // 실측 이름(08-07): 커널은 "Memory Compression"으로 보고한다
+        assert!(is_protected("Memory Compression"));
+        assert!(is_protected("System"));
+        assert!(is_protected("System Idle Process"));
         assert!(!is_protected("notepad.exe"));
         assert!(!is_protected("chrome.exe"));
     }
