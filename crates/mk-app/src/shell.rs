@@ -3,6 +3,7 @@
 //! 창 등록·wndproc 관용구는 nexa-dir2 crates/nexa-app/src/tip.rs 패턴 계승.
 
 use std::cell::Cell;
+use std::time::Instant;
 
 use mk_core::{level, Level, MemSnapshot};
 use windows::core::{w, PCWSTR};
@@ -14,32 +15,37 @@ use windows::Win32::Graphics::Gdi::{
     DEFAULT_PITCH, DT_CENTER, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, OUT_DEFAULT_PRECIS,
     TRANSPARENT,
 };
+use windows::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::ProcessStatus::K32EmptyWorkingSet;
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
-use windows::Win32::System::Threading::GetCurrentProcess;
+use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 use windows::Win32::UI::Shell::{
-    Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY,
-    NOTIFYICONDATAW,
+    ShellExecuteW, Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_TIP, NIIF_ERROR,
+    NIIF_INFO, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateIconIndirect, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyIcon,
     DestroyMenu, DestroyWindow, DispatchMessageW, GetCursorPos, GetMessageW, GetSystemMetrics,
-    KillTimer, PostQuitMessage, RegisterClassW, RegisterWindowMessageW, SetForegroundWindow,
-    SetTimer, TrackPopupMenu, HICON, ICONINFO, MF_GRAYED, MF_SEPARATOR, MF_STRING, MSG,
-    SM_CXSMICON, SM_CYSMICON, TPM_BOTTOMALIGN, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
-    WINDOW_EX_STYLE, WM_APP, WM_CONTEXTMENU, WM_CREATE, WM_DESTROY, WM_RBUTTONUP, WM_TIMER,
-    WNDCLASSW, WS_OVERLAPPED,
+    KillTimer, PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
+    SetForegroundWindow, SetTimer, TrackPopupMenu, HICON, ICONINFO, MF_GRAYED, MF_SEPARATOR,
+    MF_STRING, MSG, SM_CXSMICON, SM_CYSMICON, SW_SHOWNORMAL, TPM_BOTTOMALIGN, TPM_NONOTIFY,
+    TPM_RETURNCMD, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WM_APP, WM_CONTEXTMENU, WM_CREATE, WM_DESTROY,
+    WM_RBUTTONUP, WM_TIMER, WNDCLASSW, WS_OVERLAPPED,
 };
 
 const CLASS: PCWSTR = w!("NexaMemKeeperShell");
 /// 트레이 콜백 메시지(창 전용 사용자 메시지).
 const WM_TRAY: u32 = WM_APP + 1;
+/// 워커 완료 통지(wParam = 종료 코드) — 워커 스레드에서 PostMessage(docs/08 §4-3).
+const WM_WORKER_DONE: u32 = WM_APP + 2;
 const TRAY_ID: u32 = 1;
 const TIMER_POLL: usize = 1;
 /// 관찰 폴링 주기(docs/05 §4-3 기본값 5초 — M4에서 설정으로 이동).
 const POLL_MS: u32 = 5_000;
 const CMD_EXIT: usize = 100;
+const CMD_CLEAN: usize = 101;
+const CMD_ELEVATE: usize = 102;
 
 thread_local! {
     /// 직전 표시 %(같으면 아이콘 재생성 생략 — 유휴 CPU ~0% 게이트).
@@ -48,6 +54,10 @@ thread_local! {
     static TRAY_HICON: Cell<HICON> = const { Cell::new(HICON(std::ptr::null_mut())) };
     /// explorer 재시작 감지용 "TaskbarCreated" 등록 메시지.
     static TASKBAR_MSG: Cell<u32> = const { Cell::new(0) };
+    /// 정리 워커 실행 중(이중 실행 방지 — 메뉴 비활성).
+    static CLEAN_BUSY: Cell<bool> = const { Cell::new(false) };
+    /// 마지막 정리(시각, 회수 MB) — 툴팁 둘째 줄.
+    static LAST_CLEAN: Cell<Option<(Instant, u32)>> = const { Cell::new(None) };
 }
 
 /// 상주 셸 진입 — 숨김 호스트 창 생성 후 메시지 루프(종료 메뉴 선택까지 블록).
@@ -105,6 +115,19 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
             }
             LRESULT(0)
         }
+        WM_WORKER_DONE => {
+            CLEAN_BUSY.set(false);
+            let outcome = mk_core::decode_clean_result(wp.0 as u32);
+            if let Some(o) = outcome {
+                LAST_CLEAN.set(Some((Instant::now(), o.mb)));
+            }
+            let (title, body) = mk_core::clean_report(outcome);
+            notify_balloon(hwnd, &title, &body, outcome.is_some());
+            // 정리 직후 수치 즉시 반영
+            LAST_PERCENT.set(u32::MAX);
+            tray_update(hwnd);
+            LRESULT(0)
+        }
         WM_DESTROY => {
             let _ = KillTimer(Some(hwnd), TIMER_POLL);
             let nid = base_nid(hwnd);
@@ -157,10 +180,100 @@ unsafe fn fill_nid(hwnd: HWND, snap: &MemSnapshot) -> NOTIFYICONDATAW {
         let _ = DestroyIcon(old);
     }
     nid.hIcon = icon;
-    let tip: Vec<u16> = mk_core::tray_tooltip(snap).encode_utf16().collect();
+    let mut tip_text = mk_core::tray_tooltip(snap);
+    if let Some((at, mb)) = LAST_CLEAN.get() {
+        tip_text.push('\n');
+        tip_text.push_str(&mk_core::fmt_last_clean(mb, at.elapsed().as_secs() / 60));
+    }
+    let tip: Vec<u16> = tip_text.encode_utf16().collect();
     let n = tip.len().min(nid.szTip.len() - 1);
     nid.szTip[..n].copy_from_slice(&tip[..n]);
     nid
+}
+
+/// 풍선 알림(FR-4 결과 통지 — M4에서 notify 설정으로 on/off).
+unsafe fn notify_balloon(hwnd: HWND, title: &str, body: &str, ok: bool) {
+    let mut nid = base_nid(hwnd);
+    nid.uFlags = NIF_INFO;
+    nid.dwInfoFlags = if ok { NIIF_INFO } else { NIIF_ERROR };
+    let t: Vec<u16> = title.encode_utf16().collect();
+    let n = t.len().min(nid.szInfoTitle.len() - 1);
+    nid.szInfoTitle[..n].copy_from_slice(&t[..n]);
+    let b: Vec<u16> = body.encode_utf16().collect();
+    let n = b.len().min(nid.szInfo.len() - 1);
+    nid.szInfo[..n].copy_from_slice(&b[..n]);
+    let _ = Shell_NotifyIconW(NIM_MODIFY, &nid);
+}
+
+/// 정리 워커 기동(DR-7) — 별도 스레드에서 프로세스 실행·대기 후 결과를 PostMessage.
+/// 워커 크래시(code=None)도 WORKER_ERR로 통지 — 셸은 어떤 실패에도 죽지 않는다(docs/08 §4-4).
+fn spawn_clean(hwnd: HWND) {
+    if CLEAN_BUSY.get() {
+        return;
+    }
+    CLEAN_BUSY.set(true);
+    let hwnd_raw = hwnd.0 as usize;
+    std::thread::spawn(move || {
+        let code = std::env::current_exe()
+            .ok()
+            .and_then(|exe| {
+                std::process::Command::new(exe)
+                    .args(["--worker", "clean"])
+                    .status()
+                    .ok()
+            })
+            .and_then(|s| s.code())
+            .map(|c| c as u32)
+            .unwrap_or(mk_core::WORKER_ERR);
+        unsafe {
+            let _ = PostMessageW(
+                Some(HWND(hwnd_raw as *mut core::ffi::c_void)),
+                WM_WORKER_DONE,
+                WPARAM(code as usize),
+                LPARAM(0),
+            );
+        }
+    });
+}
+
+/// 현재 프로세스 승격 여부(관리자) — 메뉴 표시 제어.
+unsafe fn is_elevated() -> bool {
+    let mut token = windows::Win32::Foundation::HANDLE::default();
+    if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).is_err() {
+        return false;
+    }
+    let mut elev = TOKEN_ELEVATION::default();
+    let mut len = 0u32;
+    let ok = GetTokenInformation(
+        token,
+        TokenElevation,
+        Some(&mut elev as *mut _ as *mut core::ffi::c_void),
+        std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+        &mut len,
+    )
+    .is_ok();
+    let _ = windows::Win32::Foundation::CloseHandle(token);
+    ok && elev.TokenIsElevated != 0
+}
+
+/// 관리자 권한으로 재시작(FR-6) — 성공 시 현재 인스턴스 종료.
+unsafe fn restart_elevated(hwnd: HWND) {
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let mut wide: Vec<u16> = exe.to_string_lossy().encode_utf16().collect();
+    wide.push(0);
+    let inst = ShellExecuteW(
+        None,
+        w!("runas"),
+        PCWSTR(wide.as_ptr()),
+        None,
+        None,
+        SW_SHOWNORMAL,
+    );
+    if inst.0 as isize > 32 {
+        let _ = DestroyWindow(hwnd); // UAC 승인됨 — 새 인스턴스에 양보
+    }
 }
 
 unsafe fn tray_add(hwnd: HWND) {
@@ -281,10 +394,25 @@ unsafe fn make_icon(percent: u32) -> HICON {
     icon
 }
 
-/// 트레이 우클릭 메뉴 — M0 범위: 종료만(정리·목록·설정은 M1~M4에서 추가).
+/// 트레이 우클릭 메뉴 — M1: 지금 정리·승격 재시작·종료(목록·설정은 M2~M4에서 추가).
 unsafe fn show_menu(hwnd: HWND) {
     let Ok(menu) = CreatePopupMenu() else { return };
     let _ = AppendMenuW(menu, MF_GRAYED, 0, w!("Nexa MemKeeper 0.0.1"));
+    let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
+    let clean_flags = if CLEAN_BUSY.get() {
+        MF_STRING | MF_GRAYED
+    } else {
+        MF_STRING
+    };
+    let _ = AppendMenuW(menu, clean_flags, CMD_CLEAN, w!("지금 정리(&C)"));
+    if !is_elevated() {
+        let _ = AppendMenuW(
+            menu,
+            MF_STRING,
+            CMD_ELEVATE,
+            w!("관리자 권한으로 재시작(&A)…"),
+        );
+    }
     let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
     let _ = AppendMenuW(menu, MF_STRING, CMD_EXIT, w!("종료(&X)"));
     let mut pt = POINT::default();
@@ -301,7 +429,12 @@ unsafe fn show_menu(hwnd: HWND) {
         None,
     );
     let _ = DestroyMenu(menu);
-    if cmd.0 as usize == CMD_EXIT {
-        let _ = DestroyWindow(hwnd);
+    match cmd.0 as usize {
+        CMD_EXIT => {
+            let _ = DestroyWindow(hwnd);
+        }
+        CMD_CLEAN => spawn_clean(hwnd),
+        CMD_ELEVATE => restart_elevated(hwnd),
+        _ => {}
     }
 }
