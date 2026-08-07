@@ -36,6 +36,20 @@ jobs:
       - name: 예산 게이트 + 포터블 ZIP (docs/18 §4 · docs/20 §2)
         shell: pwsh
         run: pwsh packaging/pack.ps1 -SkipBuild -SkipInstaller
+      # 게시 스위치 상태를 눈으로 확인하기 위한 단계 — 값은 절대 찍지 않고 **설정 여부만** 본다.
+      # (시크릿은 API로 조회할 수 없어, 릴리스를 걸기 전에 이 출력으로 상태를 확인한다.)
+      - name: 게시 스위치 상태 (값 노출 없음 — docs/20 §7-1)
+        shell: pwsh
+        env:
+          HAS_CHOCO_KEY: ${{ secrets.CHOCO_API_KEY != '' }}
+          HAS_WINGET_TOKEN: ${{ secrets.WINGET_TOKEN != '' }}
+          VAR_CHOCO_PUSH: ${{ vars.CHOCO_PUSH }}
+          VAR_WINGET_PUBLISH: ${{ vars.WINGET_PUBLISH }}
+        run: |
+          Write-Output "secrets.CHOCO_API_KEY  설정됨 : $env:HAS_CHOCO_KEY"
+          Write-Output "secrets.WINGET_TOKEN   설정됨 : $env:HAS_WINGET_TOKEN"
+          Write-Output "vars.CHOCO_PUSH               : '$env:VAR_CHOCO_PUSH'  (true일 때만 choco push)"
+          Write-Output "vars.WINGET_PUBLISH           : '$env:VAR_WINGET_PUBLISH'  (true일 때만 winget PR)"
       - uses: actions/upload-artifact@v7
         with:
           name: NexaMemKeeper-win-x64
