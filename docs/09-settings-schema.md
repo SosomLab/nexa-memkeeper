@@ -65,6 +65,7 @@
 | `topn` | u32 | `5` | 3~10 |
 | `topn_metric` | enum | `private_ws` | `private_ws` \| `ws` \| `commit` |
 | `list_refresh_ms` | u32 | `2000` | 500~10000 — Top 5 팝업·트리 뷰 열려 있는 동안 사용량 자동 갱신 주기(사용자 확정 08-07). 설정 창·일반 그룹 노출 |
+| `view_flat` | bool | `true` | 메인 화면 기본 보기 = 평면 목록(false = 프로세스 트리). M3에서 세션 한정으로 동작 중 — M4에서 ini 저장 연결 |
 | `hide_pseudo` | bool | `true` | 의사 프로세스(Memory Compression·Registry·Secure System) 숨김 — 작업 관리자와 같은 기본값(사용자 확정 08-07). 메인 화면 설정 메뉴에서 토글, 해제하면 목록에 표시(여전히 🔒 조작 불가) |
 
 ## 7. 규칙
