@@ -67,7 +67,10 @@ pub struct Settings {
     pub topn: u32,
     pub list_refresh_ms: u32,
     pub hide_pseudo: bool,
+    /// 평면 목록 여부 — **기본 false = 프로세스 트리**(부모-자식, 사용자 확정 08-07).
     pub view_flat: bool,
+    /// 쓰레드 행 표시 — 기본 off(작업 관리자처럼 프로세스 계층만).
+    pub show_threads: bool,
     /// 우리가 모르는 키 원문(섹션 → "키=값" 목록) — 왕복 보존용.
     unknown: BTreeMap<String, Vec<String>>,
 }
@@ -89,7 +92,8 @@ impl Default for Settings {
             topn: 5,
             list_refresh_ms: 2_000,
             hide_pseudo: true,
-            view_flat: true,
+            view_flat: false,
+            show_threads: false,
             unknown: BTreeMap::new(),
         }
     }
@@ -195,6 +199,9 @@ impl Settings {
                 self.hide_pseudo = parse_bool(value).unwrap_or(self.hide_pseudo)
             }
             ("ui", "view_flat") => self.view_flat = parse_bool(value).unwrap_or(self.view_flat),
+            ("ui", "show_threads") => {
+                self.show_threads = parse_bool(value).unwrap_or(self.show_threads)
+            }
             _ => return false,
         }
         true
@@ -257,6 +264,7 @@ impl Settings {
         out.push_str(&format!("list_refresh_ms = {}\n", self.list_refresh_ms));
         out.push_str(&format!("hide_pseudo = {}\n", b(self.hide_pseudo)));
         out.push_str(&format!("view_flat = {}\n", b(self.view_flat)));
+        out.push_str(&format!("show_threads = {}\n", b(self.show_threads)));
         self.push_unknown(&mut out, "ui");
 
         // 우리가 모르는 섹션 전체도 보존
@@ -296,7 +304,10 @@ mod tests {
         );
         assert_eq!((s.threshold_percent, s.cooldown_ms), (90, 300_000));
         assert_eq!((s.list_refresh_ms, s.topn), (2_000, 5));
-        assert!(s.auto_enabled && s.notify && s.hide_pseudo && s.view_flat);
+        assert!(s.auto_enabled && s.notify && s.hide_pseudo);
+        // 기본 보기 = 프로세스 트리, 쓰레드는 숨김(사용자 확정 08-07)
+        assert!(!s.view_flat, "기본은 트리 보기여야 한다");
+        assert!(!s.show_threads, "쓰레드는 기본 숨김이어야 한다");
         // 안전 우선 — ①② 만 기본 on
         assert_eq!((s.areas.working_sets, s.areas.standby_low), (true, true));
         assert!(

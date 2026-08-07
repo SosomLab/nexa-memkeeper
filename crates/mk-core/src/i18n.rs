@@ -97,6 +97,7 @@ const KO: &[(&str, &str)] = &[
     ("View(&V)", "보기(&V)"),
     ("Flat List(&L) — show all", "평면 목록(&L) — 전체 나열"),
     ("Process Tree(&T)", "프로세스 트리(&T)"),
+    ("Show threads(&H)", "쓰레드 표시(&H)"),
     ("Expand All(&E)", "모두 펼치기(&E)"),
     ("Collapse All(&C)", "모두 접기(&C)"),
     (

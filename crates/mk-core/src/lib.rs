@@ -165,13 +165,17 @@ pub struct Row {
     pub expanded: bool,
 }
 
-/// 프로세스 목록 → 트리 평면화. `expanded`에 든 PID의 자식·쓰레드가 펼쳐진다.
+/// 프로세스 목록 → 트리 평면화. `expanded`에 든 PID의 자식이 펼쳐진다.
 /// 형제 정렬은 `key`/`asc`를 따르고, 부모가 목록에 없으면 최상위로 올린다(고아 보존).
+///
+/// `show_threads`(기본 off — 사용자 확정 08-07): 켜야 쓰레드 행이 함께 펼쳐진다. 작업 관리자처럼
+/// **프로세스 계층만 보는 것이 기본**이고, 쓰레드는 진단이 필요할 때만 켠다.
 pub fn build_rows(
     procs: &[ProcInfo],
     key: SortKey,
     asc: bool,
     expanded: &std::collections::HashSet<u32>,
+    show_threads: bool,
 ) -> Vec<Row> {
     use std::collections::{HashMap, HashSet};
     let present: HashSet<u32> = procs.iter().map(|p| p.pid).collect();
@@ -205,12 +209,14 @@ pub fn build_rows(
 
     let mut out = Vec::with_capacity(procs.len());
     let mut visiting: HashSet<u32> = HashSet::new(); // 순환 보호(비정상 ppid 대비)
+    #[allow(clippy::too_many_arguments)] // 내부 재귀 헬퍼 — 인자를 묶으면 오히려 읽기 어렵다
     fn walk(
         idx: usize,
         depth: i32,
         procs: &[ProcInfo],
         children: &std::collections::HashMap<u32, Vec<usize>>,
         expanded: &std::collections::HashSet<u32>,
+        show_threads: bool,
         visiting: &mut std::collections::HashSet<u32>,
         out: &mut Vec<Row>,
     ) {
@@ -230,16 +236,25 @@ pub fn build_rows(
             private_ws: p.private_ws,
             ws: p.ws,
             threads: p.threads,
-            expandable: has_kids || !p.thread_list.is_empty(),
+            expandable: has_kids || (show_threads && !p.thread_list.is_empty()),
             expanded: is_expanded,
         });
         if is_expanded {
             if let Some(kids) = kids {
                 for &c in kids {
-                    walk(c, depth + 1, procs, children, expanded, visiting, out);
+                    walk(
+                        c,
+                        depth + 1,
+                        procs,
+                        children,
+                        expanded,
+                        show_threads,
+                        visiting,
+                        out,
+                    );
                 }
             }
-            for t in &p.thread_list {
+            for t in p.thread_list.iter().filter(|_| show_threads) {
                 out.push(Row {
                     kind: RowKind::Thread,
                     depth: depth + 1,
@@ -262,7 +277,16 @@ pub fn build_rows(
         visiting.remove(&p.pid);
     }
     for r in roots {
-        walk(r, 0, procs, &children, expanded, &mut visiting, &mut out);
+        walk(
+            r,
+            0,
+            procs,
+            &children,
+            expanded,
+            show_threads,
+            &mut visiting,
+            &mut out,
+        );
     }
     out
 }
@@ -276,6 +300,7 @@ pub fn build_rows_flat(
     key: SortKey,
     asc: bool,
     expanded: &std::collections::HashSet<u32>,
+    show_threads: bool,
 ) -> Vec<Row> {
     let mut idx: Vec<usize> = (0..procs.len()).collect();
     idx.sort_by(|a, b| {
@@ -305,10 +330,10 @@ pub fn build_rows_flat(
             private_ws: p.private_ws,
             ws: p.ws,
             threads: p.threads,
-            expandable: !p.thread_list.is_empty(),
+            expandable: show_threads && !p.thread_list.is_empty(),
             expanded: is_expanded,
         });
-        if is_expanded {
+        if is_expanded && show_threads {
             for t in &p.thread_list {
                 out.push(Row {
                     kind: RowKind::Thread,
@@ -653,12 +678,18 @@ mod tests {
             child(300, 200, "grand.exe", 100),
         ];
         // 접힌 상태 = 최상위만
-        let rows = build_rows(&procs, SortKey::PrivateWs, false, &HashSet::new());
+        let rows = build_rows(&procs, SortKey::PrivateWs, false, &HashSet::new(), true);
         assert_eq!(rows.len(), 1);
         assert!(rows[0].expandable && !rows[0].expanded);
 
         // parent만 펼침 → child가 depth 1로
-        let rows = build_rows(&procs, SortKey::PrivateWs, false, &HashSet::from([100]));
+        let rows = build_rows(
+            &procs,
+            SortKey::PrivateWs,
+            false,
+            &HashSet::from([100]),
+            true,
+        );
         assert_eq!(
             rows.iter().map(|r| (r.pid, r.depth)).collect::<Vec<_>>(),
             vec![(100, 0), (200, 1)]
@@ -669,6 +700,7 @@ mod tests {
             SortKey::PrivateWs,
             false,
             &HashSet::from([100, 200]),
+            true,
         );
         assert_eq!(
             rows.iter().map(|r| (r.pid, r.depth)).collect::<Vec<_>>(),
@@ -693,7 +725,13 @@ mod tests {
         ];
         parent.threads = 2;
         let procs = vec![parent, child(20, 10, "b.exe", 50)];
-        let rows = build_rows(&procs, SortKey::PrivateWs, false, &HashSet::from([10]));
+        let rows = build_rows(
+            &procs,
+            SortKey::PrivateWs,
+            false,
+            &HashSet::from([10]),
+            true,
+        );
         let kinds: Vec<_> = rows.iter().map(|r| (r.kind, r.tid)).collect();
         assert_eq!(
             kinds,
@@ -707,10 +745,41 @@ mod tests {
     }
 
     #[test]
+    fn threads_hidden_unless_enabled() {
+        // 기본은 프로세스 계층만(사용자 확정 08-07) — 쓰레드는 옵션을 켜야 보인다
+        let mut a = p(10, "a.exe", 100);
+        a.thread_list = vec![ThreadInfo {
+            tid: 11,
+            state: 2,
+            context_switches: 1,
+        }];
+        a.threads = 1;
+        let procs = vec![a];
+        let expanded = HashSet::from([10]);
+
+        let off = build_rows(&procs, SortKey::PrivateWs, false, &expanded, false);
+        assert_eq!(off.len(), 1, "쓰레드가 기본으로 보이면 안 된다");
+        assert!(
+            !off[0].expandable,
+            "쓰레드만 있는 프로세스는 확장 버튼도 없어야 한다"
+        );
+
+        let on = build_rows(&procs, SortKey::PrivateWs, false, &expanded, true);
+        assert_eq!(on.len(), 2);
+        assert_eq!(on[1].kind, RowKind::Thread);
+
+        // 평면 목록도 같은 규칙
+        assert_eq!(
+            build_rows_flat(&procs, SortKey::PrivateWs, false, &expanded, false).len(),
+            1
+        );
+    }
+
+    #[test]
     fn build_rows_keeps_orphans_at_top_level() {
         // 부모(999)가 목록에 없는 고아 — 최상위로 올라와야 사라지지 않는다
         let procs = vec![child(50, 999, "orphan.exe", 10)];
-        let rows = build_rows(&procs, SortKey::PrivateWs, false, &HashSet::new());
+        let rows = build_rows(&procs, SortKey::PrivateWs, false, &HashSet::new(), true);
         assert_eq!(rows.len(), 1);
         assert_eq!((rows[0].pid, rows[0].depth), (50, 0));
     }
@@ -719,7 +788,13 @@ mod tests {
     fn build_rows_survives_parent_cycle() {
         // 비정상 데이터: 서로가 부모 — 무한 재귀 없이 끝나야 한다
         let procs = vec![child(1, 2, "a.exe", 1), child(2, 1, "b.exe", 1)];
-        let rows = build_rows(&procs, SortKey::PrivateWs, false, &HashSet::from([1, 2]));
+        let rows = build_rows(
+            &procs,
+            SortKey::PrivateWs,
+            false,
+            &HashSet::from([1, 2]),
+            true,
+        );
         assert!(rows.len() <= 4);
     }
 
@@ -731,14 +806,14 @@ mod tests {
             child(200, 100, "NexaMarkdownViewer.exe", 300),
             child(300, 200, "child.exe", 100),
         ];
-        let rows = build_rows_flat(&procs, SortKey::PrivateWs, false, &HashSet::new());
+        let rows = build_rows_flat(&procs, SortKey::PrivateWs, false, &HashSet::new(), true);
         assert_eq!(
             rows.iter().map(|r| (r.pid, r.depth)).collect::<Vec<_>>(),
             vec![(100, 0), (200, 0), (300, 0)]
         );
         // 트리 보기에서는 접힌 부모 아래라 최상위 1개만 보인다(대비 확인)
         assert_eq!(
-            build_rows(&procs, SortKey::PrivateWs, false, &HashSet::new()).len(),
+            build_rows(&procs, SortKey::PrivateWs, false, &HashSet::new(), true).len(),
             1
         );
     }
@@ -752,7 +827,13 @@ mod tests {
             context_switches: 1,
         }];
         let procs = vec![a, child(20, 10, "b.exe", 50)];
-        let rows = build_rows_flat(&procs, SortKey::PrivateWs, false, &HashSet::from([10]));
+        let rows = build_rows_flat(
+            &procs,
+            SortKey::PrivateWs,
+            false,
+            &HashSet::from([10]),
+            true,
+        );
         assert_eq!(
             rows.iter()
                 .map(|r| (r.kind, r.pid, r.tid))
