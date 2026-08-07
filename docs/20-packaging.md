@@ -8,6 +8,7 @@
 | 채널 | 파일 | 쓰는 상황 |
 | --- | --- | --- |
 | **설치형** | `NexaMemKeeper-<ver>-setup.exe` | 보통 사용자. 프로그램 목록 등록·바로 가기·**자동 실행 질문(기본 체크)** |
+| **설치형 ZIP** | `NexaMemKeeper-<ver>-setup.zip` | 브라우저가 exe 다운로드를 막을 때(설치본 + 실행 안내) |
 | **포터블** | `NexaMemKeeper-<ver>-portable.zip` | 설치가 막힌 환경·USB 휴대. 압축을 풀고 바로 실행 |
 
 무서명 exe는 SmartScreen이 **설치 단계에서** 막는 일이 잦다. 포터블 ZIP은 그 단계를 통째로 건너뛰므로,
@@ -96,11 +97,22 @@ choco·winget 매니페스트가 `/ALLUSERS`를 넘긴다. 자동 실행도 `/TA
 | --- | --- |
 | [`packaging/chocolatey/nexa-memkeeper/`](../packaging/chocolatey/nexa-memkeeper/) | 설치형. `Install-ChocolateyPackage` + Inno 무인 인자. 제거 시 설정 보존 |
 | [`packaging/chocolatey/nexa-memkeeper.portable/`](../packaging/chocolatey/nexa-memkeeper.portable/) | 포터블. ZIP을 tools에 푼다(제거 시 설정도 함께 사라짐 — 설명에 명시) |
-| [`packaging/winget/`](../packaging/winget/) | winget 매니페스트 3종(version·installer·locale). 첫 제출용 원본이며 이후 버전은 `wingetcreate update`가 URL·해시를 갱신 |
+| [`packaging/winget/SosomLab.NexaMemKeeper/`](../packaging/winget/SosomLab.NexaMemKeeper/) | winget **설치형** 매니페스트 3종. `InstallerType: inno` · `/ALLUSERS`로 머신 전역 |
+| [`packaging/winget/SosomLab.NexaMemKeeper.Portable/`](../packaging/winget/SosomLab.NexaMemKeeper.Portable/) | winget **포터블** 매니페스트 3종. `InstallerType: zip` + `NestedInstallerType: portable` — ZIP 안의 exe를 `nexamemkeeper` 별칭으로 등록(사용자 범위) |
 
 `{{VERSION}}`·`{{CHECKSUM64}}` 자리표시자는 **릴리스 워크플로가 태그 시점에 치환**한다. 손으로 채우지 않는다.
 
-### 7-4. 첫 등록에 필요한 사람 손 (자동화 밖)
+### 7-4. 포터블을 winget에서 따로 내는 이유
+
+winget 패키지 하나에 설치형과 포터블을 함께 담을 수 없다 — 자산도 설치 방식도 범위도 다르기 때문이다.
+그래서 **`SosomLab.NexaMemKeeper`(설치형, machine)**와 **`SosomLab.NexaMemKeeper.Portable`(포터블, user)**
+두 패키지로 낸다. Chocolatey도 같은 이유로 `nexa-memkeeper` / `nexa-memkeeper.portable` 2패키지다.
+
+포터블 쪽은 `InstallerType: zip` + `NestedInstallerType: portable`로, ZIP 안의 `NexaMemKeeper.exe`를
+**`nexamemkeeper` 명령 별칭**으로 등록한다(승격 불필요). 릴리스 워크플로는 게시가 켜져 있을 때
+두 패키지 각각에 PR을 만든다.
+
+### 7-5. 첫 등록에 필요한 사람 손 (자동화 밖)
 
 1. **Release가 먼저** — 매니페스트가 참조할 자산 URL·해시가 있어야 한다.
 2. **winget**: `microsoft/winget-pkgs`에 최초 PR 1회(계정·포크 필요). 이후는 `wingetcreate`가 갱신.

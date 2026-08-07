@@ -1,0 +1,24 @@
+# winget 포터블 매니페스트 — 설치기 없이 **ZIP 안의 exe를 그대로** 등록한다(docs/20 §7).
+# 설치형(SosomLab.NexaMemKeeper)과 별개 패키지다: 자산도 다르고 설치 범위도 다르다.
+# {{VERSION}}/{{SHA256}}는 release.yml의 wingetcreate가 채운다 — 수동 편집 금지.
+PackageIdentifier: SosomLab.NexaMemKeeper.Portable
+PackageVersion: "{{VERSION}}"
+InstallerType: zip
+# ZIP 안의 실행 파일을 포터블로 등록 — winget이 링크를 만들어 PATH에서 부를 수 있게 한다.
+NestedInstallerType: portable
+NestedInstallerFiles:
+  - RelativeFilePath: NexaMemKeeper.exe
+    PortableCommandAlias: nexamemkeeper
+# 사용자 범위 — 포터블은 승격 없이 사용자 폴더에 풀린다(설치형과 공존 가능).
+Scope: user
+InstallModes:
+  - silent
+  - silentWithProgress
+UpgradeBehavior: install
+ReleaseDate: "{{RELEASE_DATE}}"
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/SosomLab/nexa-memkeeper/releases/download/{{VERSION}}/NexaMemKeeper-{{VERSION}}-portable.zip
+    InstallerSha256: "{{SHA256}}"
+ManifestType: installer
+ManifestVersion: 1.6.0

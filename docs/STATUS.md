@@ -2,7 +2,14 @@
 
 > 최신이 맨 위(시간 역순, 같은 날 여러 건이면 "N차"로 스택). 상세는 [journal/](journal/), 여기는 요약만.
 
-## 2026-08-07 25차 — `0.6.1` 재배포
+## 2026-08-07 26차 — `0.6.2` 재배포 · winget 포터블 패키지
+
+- **[0.6.2 릴리스](https://github.com/SosomLab/nexa-memkeeper/releases/tag/0.6.2)** — 자산 4종을 워크플로가 자동 첨부(0.6.1에서 설치본 ZIP이 목록 누락으로 빠졌던 것 수정).
+- **winget 2패키지 체계** — `SosomLab.NexaMemKeeper`(설치형·machine) / `SosomLab.NexaMemKeeper.Portable`(zip+portable·user, `nexamemkeeper` 별칭). choco와 동일 구도.
+- 게시는 계속 **꺼짐**(변수 미설정) — 켜면 두 패키지에 각각 PR이 만들어진다.
+- 상세 → [journal/2026-08-07](journal/2026-08-07.md)
+
+## 직전(2026-08-07 25차) — `0.6.1` 재배포
 
 - **[0.6.1 릴리스](https://github.com/SosomLab/nexa-memkeeper/releases/tag/0.6.1)** — 자산 4종을 **워크플로가 자동 생성·첨부**(0.6.0에서는 설치본 ZIP을 수동 업로드했다).
 - 앱 동작 변경 없음 — 포장 파이프라인 검증이 목적.

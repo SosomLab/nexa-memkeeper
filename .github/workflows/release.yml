@@ -105,6 +105,7 @@ jobs:
         with:
           files: |
             target/pack/NexaMemKeeper-*-setup.exe
+            target/pack/NexaMemKeeper-*-setup.zip
             target/pack/NexaMemKeeper-*-portable.zip
             target/pack/SHA256SUMS.txt
           generate_release_notes: true
@@ -116,11 +117,15 @@ jobs:
         shell: pwsh
         run: |
           $ver = "${{ steps.ver.outputs.version }}"
-          $url = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/NexaMemKeeper-$ver-setup.exe"
+          $base = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}"
           curl.exe -L -o wingetcreate.exe https://aka.ms/wingetcreate/latest
+          # 설치형(machine)과 포터블(user) 두 패키지를 각각 갱신한다 — 자산이 다르므로 PR도 둘이다.
           .\wingetcreate.exe update SosomLab.NexaMemKeeper `
-            --version $ver --urls "$url|x64|machine" --submit --token $env:WINGET_TOKEN
-          if ($LASTEXITCODE -ne 0) { throw "wingetcreate 실패: $LASTEXITCODE" }
+            --version $ver --urls "$base/NexaMemKeeper-$ver-setup.exe|x64|machine" --submit --token $env:WINGET_TOKEN
+          if ($LASTEXITCODE -ne 0) { throw "wingetcreate 실패(설치형): $LASTEXITCODE" }
+          .\wingetcreate.exe update SosomLab.NexaMemKeeper.Portable `
+            --version $ver --urls "$base/NexaMemKeeper-$ver-portable.zip|x64|user" --submit --token $env:WINGET_TOKEN
+          if ($LASTEXITCODE -ne 0) { throw "wingetcreate 실패(포터블): $LASTEXITCODE" }
 
       - uses: actions/upload-artifact@v7
         with:
