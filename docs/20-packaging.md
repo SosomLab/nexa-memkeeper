@@ -77,7 +77,7 @@ pwsh packaging\pack.ps1 -SkipInstaller  # ZIP만
 
 | 채널 | 켜는 조건 | 끈 상태에서 하는 일 |
 | --- | --- | --- |
-| Chocolatey | 저장소 변수 `CHOCO_PUSH=true` **+** 시크릿 `CHOCO_API_KEY` | `.nupkg`까지 만들어 아티팩트로 남김(push 안 함) |
+| Chocolatey | 저장소 변수 `CHOCO_PUSH=true` **+** 시크릿 `CHOCO_API_KEY` | `.nupkg`까지 만들어 아티팩트로 남김(push 안 함) — **08-08부터 켜져 있다**: 태그를 밀면 자동 push된다 |
 | winget | 저장소 변수 `WINGET_PUBLISH=true` **+** 시크릿 `WINGET_TOKEN` | 아무것도 하지 않음 |
 
 준비되면 **Settings > Secrets and variables**에 값만 넣으면 된다(워크플로 수정 불필요).
@@ -111,6 +111,10 @@ winget 패키지 하나에 설치형과 포터블을 함께 담을 수 없다 �
 포터블 쪽은 `InstallerType: zip` + `NestedInstallerType: portable`로, ZIP 안의 `NexaMemKeeper.exe`를
 **`nexamemkeeper` 명령 별칭**으로 등록한다(승격 불필요). 릴리스 워크플로는 게시가 켜져 있을 때
 두 패키지 각각에 PR을 만든다.
+
+> ✅ **08-08 Chocolatey 등록 완료(심사 대기)** — `nexa-memkeeper` 0.7.0 · `nexa-memkeeper.portable` 0.7.0을
+> push했다. 커뮤니티 저장소는 자동 검사 + 사람 모더레이션을 거치며, 통과 전에는 `choco install`로 보이지
+> 않는다([큐 확인](https://ch0.co/moderation)). 이후 태그부터는 변수가 켜져 있어 **자동으로 새 버전이 올라간다**.
 
 ### 7-5. 첫 등록에 필요한 사람 손 (자동화 밖)
 

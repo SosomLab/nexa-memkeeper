@@ -2,7 +2,14 @@
 
 > 최신이 맨 위(시간 역순, 같은 날 여러 건이면 "N차"로 스택). 상세는 [journal/](journal/), 여기는 요약만.
 
-## 2026-08-08 8차 — `0.7.0` 배포
+## 2026-08-08 9차 — Chocolatey 등록
+
+- **`nexa-memkeeper`(설치형) · `nexa-memkeeper.portable`(포터블) 0.7.0 push 완료** → 자동 검사·모더레이션 대기([큐](https://ch0.co/moderation)).
+- 게시 스위치 `CHOCO_PUSH=true`를 켰다 — **이후 태그부터는 새 버전이 자동으로 올라간다**(태그 전 확인이 더 중요해짐).
+- winget은 최초 PR 2건이 남아 있다(M5-5b) — 그 뒤 `WINGET_PUBLISH`를 켜면 자동.
+- 상세 → [journal/2026-08-08](journal/2026-08-08.md)
+
+## 직전(2026-08-08 8차) — `0.7.0` 배포
 
 - **[0.7.0 릴리스](https://github.com/SosomLab/nexa-memkeeper/releases/tag/0.7.0)** — 08-08 기능 7건 묶음(E-1~E-3 · M3-4 · X-1~X-3).
 - 자산 4종(설치본 exe·설치본 ZIP·포터블 ZIP·SHA256SUMS)을 워크플로가 자동 첨부.
