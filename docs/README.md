@@ -34,6 +34,7 @@
 | [07 ADR-0002 회수 기법](07-adr-0002-memory-reclaim.md) | ✅ 관찰·열거·회수 시스템 콜 매핑 + 권한 전략(→ DR-6) |
 | [08 ADR-0003 상주 구조](08-adr-0003-resident-architecture.md) | ✅ 하이브리드 — 셸+온디맨드 워커(DR-4 기준 정정 → DR-7) |
 | [09 설정 스키마](09-settings-schema.md) | `data\settings.ini` 키·기본값·범위·UI 배치(M4 구현 SSOT) |
+| [19 메모리 측정·회수 해설](19-memory-measurement-and-reclaim.md) | 📖 페이지 상태·측정 지표·대상 선정 파이프라인·회수 원리(다이어그램) |
 | 01 아키텍처 | ☐ 추후 작성 — M0~M1 구현으로 실체 확정 후 기록 |
 
 ## ③ 진행 경과 · 할 일
