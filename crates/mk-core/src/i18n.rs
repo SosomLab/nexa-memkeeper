@@ -306,12 +306,19 @@ const KO: &[(&str, &str)] = &[
     ),
 ];
 
+/// 언어는 **프로세스 전역**(AtomicU8)이라, 언어를 바꾸는 테스트끼리 병렬로 돌면 서로를 덮어쓴다.
+/// 08-07에 `korean_lookup_when_selected`가 간헐적으로 깨져 드러났다 — 언어에 의존하는 테스트는
+/// 이 락을 잡고 돈다(크레이트 안에서만 쓰는 테스트 전용 장치).
+#[cfg(test)]
+pub(crate) static LANG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn default_is_english() {
+        let _guard = super::LANG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_lang(Lang::En);
         assert_eq!(lang(), Lang::En);
         assert_eq!(tr("Save"), "Save");
@@ -320,6 +327,7 @@ mod tests {
 
     #[test]
     fn korean_lookup_when_selected() {
+        let _guard = super::LANG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_lang(Lang::Ko);
         assert_eq!(tr("Save"), "저장");
         assert_eq!(tr("Cleanup Areas"), "정리 영역");
@@ -328,6 +336,7 @@ mod tests {
 
     #[test]
     fn missing_translation_falls_back_to_english() {
+        let _guard = super::LANG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_lang(Lang::Ko);
         assert_eq!(tr("Not translated yet"), "Not translated yet");
         set_lang(Lang::En);

@@ -2,7 +2,15 @@
 
 > 최신이 맨 위(시간 역순, 같은 날 여러 건이면 "N차"로 스택). 상세는 [journal/](journal/), 여기는 요약만.
 
-## 2026-08-07 22차 — CI/CD · 패키지 매니저 등록 자산
+## 2026-08-07 23차 — `0.6.0` 릴리스
+
+- **버전 `0.6.0` 승격** — 태그 push로 GitHub Actions가 설치본·포터블 ZIP·`SHA256SUMS.txt`를 Release에 첨부.
+- 게시 스위치 확인: 시크릿 2종 등록됨, **변수 `CHOCO_PUSH`·`WINGET_PUBLISH`는 미설정 → 자동 게시 없음**(지시대로).
+- 언어 전역 상태로 **간헐 실패하던 i18n 테스트**를 공용 락으로 직렬화(5회 연속 green).
+- 실측: exe **0.64MB** · ZIP **356KB** · 외부 DLL **0** · 테스트 **55 green** · 유휴 RSS 1.30MB.
+- 상세 → [journal/2026-08-07](journal/2026-08-07.md)
+
+## 직전(2026-08-07 22차) — CI/CD · 패키지 매니저 등록 자산
 
 - **GitHub Actions 2종**: `ci.yml`(push·PR — fmt·clippy·test·예산 게이트), `release.yml`(태그 push — 포장 → Release 첨부).
 - **winget·Chocolatey 자산 완비**(choco 2패키지 + winget 매니페스트 3종). 바이너리 미동봉, Release 자산을 URL+SHA256으로 참조.

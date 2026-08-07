@@ -1061,6 +1061,9 @@ mod tests {
     #[test]
     fn fmt_last_clean_ago() {
         // 기본 언어 = 영어(i18n). 한국어는 i18n 표에서 검증한다.
+        let _guard = crate::i18n::LANG_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set_lang(Lang::En);
         assert_eq!(fmt_last_clean(12, 0), "Last cleanup 12MB · just now");
         assert_eq!(fmt_last_clean(340, 3), "Last cleanup 340MB · 3m ago");
