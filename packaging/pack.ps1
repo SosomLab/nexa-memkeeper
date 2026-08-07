@@ -115,8 +115,35 @@ if (-not $iscc) {
 & $iscc.Source "/DAppVersion=$version" (Join-Path $PSScriptRoot 'NexaMemKeeper.iss')
 if ($LASTEXITCODE -ne 0) { throw '설치본 생성 실패' }
 $setup = Join-Path $outDir "NexaMemKeeper-$version-setup.exe"
+
+# 설치본을 한 번 더 ZIP으로 감싼다(사용자 요청 08-07). 무서명 exe는 브라우저의 다운로드 평판
+# 필터에 막히는 사례가 있는데, zip으로 감싸면 그 단계를 피한다(실행 시 SmartScreen 경고는 남는다).
+# 원본 setup.exe 자산은 **그대로 둔다** — winget·choco 매니페스트가 그 URL을 참조하기 때문이다.
+$notice = @(
+    "Nexa MemKeeper $version - installer"
+    ""
+    "1. Extract NexaMemKeeper-$version-setup.exe from this archive."
+    "2. Run it. This build is not code-signed, so Windows SmartScreen shows an"
+    "   'unknown publisher' warning: [More info] > [Run anyway]."
+    ""
+    "Verify the SHA-256 against SHA256SUMS.txt on the release page:"
+    "    PowerShell> Get-FileHash .\NexaMemKeeper-$version-setup.exe -Algorithm SHA256"
+    ""
+    "이 빌드에는 코드 서명 인증서가 없습니다. 처음 실행할 때 SmartScreen 경고가 뜨면"
+    "[추가 정보] > [실행]을 누르면 됩니다. 무결성은 위 명령으로 확인하세요."
+    ""
+    "https://github.com/SosomLab/nexa-memkeeper/releases"
+)
+$noticePath = Join-Path $outDir 'README.txt'
+Set-Content -Path $noticePath -Value $notice -Encoding utf8BOM
+$setupZip = Join-Path $outDir "NexaMemKeeper-$version-setup.zip"
+if (Test-Path $setupZip) { Remove-Item $setupZip -Force }
+Compress-Archive -Path $setup, $noticePath -DestinationPath $setupZip
+Remove-Item $noticePath -Force
+Write-Host ("설치본ZIP: {0} ({1} KB)" -f $setupZip, [math]::Round((Get-Item $setupZip).Length / 1KB)) -ForegroundColor Green
 Write-Host ("설치본   : {0} ({1} KB)" -f $setup, [math]::Round((Get-Item $setup).Length / 1KB)) -ForegroundColor Green
 # 해시는 winget·choco 매니페스트가 요구한다(docs/20 §8) — 릴리스 노트에도 같이 싣는다
 Write-Host ("  SHA256 : {0}" -f (Get-FileHash $setup -Algorithm SHA256).Hash)
-"$((Get-FileHash $setup -Algorithm SHA256).Hash)  $(Split-Path $setup -Leaf)`n$((Get-FileHash $zip -Algorithm SHA256).Hash)  $(Split-Path $zip -Leaf)" |
-    Set-Content (Join-Path $outDir 'SHA256SUMS.txt') -Encoding ASCII
+@($setup, $setupZip, $zip | ForEach-Object {
+        "$((Get-FileHash $_ -Algorithm SHA256).Hash.ToLower())  $(Split-Path $_ -Leaf)"
+    }) | Set-Content (Join-Path $outDir 'SHA256SUMS.txt') -Encoding ASCII
