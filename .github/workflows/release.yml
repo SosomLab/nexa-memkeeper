@@ -26,7 +26,7 @@ jobs:
       CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
       WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: rustup show
       - run: cargo test --workspace
       - run: cargo build --release
@@ -107,7 +107,7 @@ jobs:
             --version $ver --urls "$url|x64|machine" --submit --token $env:WINGET_TOKEN
           if ($LASTEXITCODE -ne 0) { throw "wingetcreate 실패: $LASTEXITCODE" }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: NexaMemKeeper-release
           path: |

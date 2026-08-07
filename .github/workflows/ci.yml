@@ -17,7 +17,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: rustup show # rust-toolchain.toml 적용(stable + rustfmt·clippy)
       - run: cargo test --workspace
 
@@ -25,7 +25,7 @@ jobs:
     name: windows (fmt·clippy·test·예산)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: rustup show
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
@@ -36,7 +36,7 @@ jobs:
       - name: 예산 게이트 + 포터블 ZIP (docs/18 §4 · docs/20 §2)
         shell: pwsh
         run: pwsh packaging/pack.ps1 -SkipBuild -SkipInstaller
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: NexaMemKeeper-win-x64
           path: target/pack/*.zip
