@@ -3,6 +3,8 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 #[cfg(windows)]
+mod listwnd;
+#[cfg(windows)]
 mod popup;
 #[cfg(windows)]
 mod procs;
@@ -41,8 +43,11 @@ fn main() {
             let pid = args.get(i + 2).and_then(|s| s.parse::<u32>().ok());
             let code = match (action, pid) {
                 ("clean", _) => worker::run_clean(),
+                ("list", _) => listwnd::run(),
                 ("trim", Some(pid)) => worker::run_trim(pid),
                 ("kill", Some(pid)) => worker::run_kill(pid),
+                ("killtree", Some(pid)) => worker::run_kill_tree(pid),
+                ("killthread", Some(tid)) => worker::run_kill_thread(tid),
                 // QA용 열거 벤치(NFR-4 게이트 측정 — docs/18 §4)
                 ("bench", _) => bench_enum(),
                 _ => mk_core::WORKER_ERR, // 알 수 없는 워커 작업

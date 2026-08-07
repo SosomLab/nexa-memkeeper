@@ -1,0 +1,1015 @@
+//! listwnd — **메인 화면**: 전체 프로세스 목록 창(FR-3, `--worker list`).
+//! 상단 메뉴바(파일·메모리·설정·도움말) + 그리드(헤더 클릭 정렬·스크롤·2초 자동 갱신).
+//! **워커 프로세스에서 동작**(DR-7): 창을 닫으면 프로세스가 끝나 사용 메모리를 OS가 전량 회수한다.
+//! 트림·종료는 같은 워커 안에서 직접 수행(상태 변경은 워커 전용 — 15 §4).
+
+use std::collections::HashSet;
+
+use mk_core::{ProcInfo, Row, RowKind, SortKey};
+use windows::core::{w, PCWSTR, PWSTR};
+use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Graphics::Gdi::{
+    BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateFontW, CreateSolidBrush,
+    DeleteDC, DeleteObject, DrawTextW, EndPaint, FillRect, GetSysColor, InvalidateRect,
+    SelectObject, SetBkMode, SetTextColor, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, COLOR_BTNFACE,
+    COLOR_GRAYTEXT, COLOR_HIGHLIGHT, COLOR_HIGHLIGHTTEXT, COLOR_WINDOW, COLOR_WINDOWTEXT,
+    DEFAULT_CHARSET, DEFAULT_PITCH, DRAW_TEXT_FORMAT, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX,
+    DT_RIGHT, DT_SINGLELINE, DT_VCENTER, HBRUSH, HDC, HFONT, OUT_DEFAULT_PRECIS, PAINTSTRUCT,
+    SRCCOPY, SYS_COLOR_INDEX, TRANSPARENT,
+};
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Registry::{
+    RegCloseKey, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW, HKEY,
+    HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_SZ,
+};
+use windows::Win32::UI::Controls::SetScrollInfo;
+use windows::Win32::UI::WindowsAndMessaging::{
+    AppendMenuW, CheckMenuItem, CreateMenu, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
+    DestroyMenu, DestroyWindow, DispatchMessageW, GetClientRect, GetCursorPos, GetMessageW,
+    GetScrollInfo, KillTimer, LoadCursorW, MessageBoxW, PostQuitMessage, RegisterClassW,
+    SetForegroundWindow, SetMenu, SetTimer, ShowWindow, TrackPopupMenu, TranslateMessage,
+    CW_USEDEFAULT, HMENU, IDC_ARROW, IDYES, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_YESNO,
+    MF_BYCOMMAND, MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING, MF_UNCHECKED, MSG,
+    SB_BOTTOM, SB_LINEDOWN, SB_LINEUP, SB_PAGEDOWN, SB_PAGEUP, SB_THUMBPOSITION, SB_THUMBTRACK,
+    SB_TOP, SB_VERT, SCROLLINFO, SCROLLINFO_MASK, SIF_PAGE, SIF_POS, SIF_RANGE, SIF_TRACKPOS,
+    SW_SHOWNORMAL, TPM_RETURNCMD, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WM_COMMAND, WM_CREATE,
+    WM_DESTROY, WM_LBUTTONDOWN, WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONUP, WM_SIZE, WM_TIMER,
+    WM_VSCROLL, WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_VISIBLE, WS_VSCROLL,
+};
+
+const CLASS: PCWSTR = w!("NexaMemKeeperList");
+const TIMER_REFRESH: usize = 20;
+const ROW_H: i32 = 22;
+const HEAD_H: i32 = 26;
+const STATUS_H: i32 = 24;
+
+// 메뉴 명령 ID
+const ID_REFRESH: usize = 200;
+const ID_CLOSE: usize = 201;
+const ID_CLEAN_ALL: usize = 210;
+const ID_TRIM_SEL: usize = 211;
+const ID_KILL_SEL: usize = 212;
+const ID_KILL_TREE_SEL: usize = 213;
+const ID_KILL_THREAD_SEL: usize = 214;
+const ID_PREFS: usize = 220;
+const ID_AUTORUN: usize = 221;
+const ID_REFRESH_1S: usize = 230;
+const ID_REFRESH_2S: usize = 231;
+const ID_REFRESH_5S: usize = 232;
+const ID_ABOUT: usize = 240;
+
+/// Windows 시작 시 실행 등록 위치(사용자 단위 — 관리자 권한 불필요).
+const RUN_KEY: PCWSTR = w!(r"Software\Microsoft\Windows\CurrentVersion\Run");
+const RUN_VALUE: PCWSTR = w!("NexaMemKeeper");
+
+/// 열 정의 — (제목, 정렬 기준, 오른쪽 정렬, 고정 폭). 이름 열은 남는 폭을 흡수(폭 0).
+const COLS: &[(&str, SortKey, bool, i32)] = &[
+    ("프로세스", SortKey::Name, false, 0),
+    ("PID", SortKey::Pid, true, 70),
+    ("프라이빗", SortKey::PrivateWs, true, 95),
+    ("워킹셋", SortKey::Ws, true, 95),
+    ("쓰레드", SortKey::Threads, true, 65),
+];
+
+struct ListState {
+    /// 수집 원본(트리 구성·자손 탐색에 사용).
+    procs: Vec<ProcInfo>,
+    /// 화면 행(트리 평면화 결과).
+    rows: Vec<Row>,
+    /// 펼친 프로세스 PID — 갱신·정렬 후에도 유지된다.
+    expanded: HashSet<u32>,
+    top: i32,
+    /// 선택 행 — (pid, tid). tid≠0이면 쓰레드 행.
+    sel: (u32, u32),
+    sort_key: SortKey,
+    sort_asc: bool,
+    refresh_ms: u32,
+    font: HFONT,
+    font_head: HFONT,
+    client: RECT,
+    menu: HMENU,
+}
+
+impl ListState {
+    fn visible_rows(&self) -> i32 {
+        ((self.client.bottom - HEAD_H - STATUS_H) / ROW_H).max(1)
+    }
+    fn max_top(&self) -> i32 {
+        (self.rows.len() as i32 - self.visible_rows()).max(0)
+    }
+    fn selected(&self) -> Option<&Row> {
+        self.rows.iter().find(|r| (r.pid, r.tid) == self.sel)
+    }
+}
+
+thread_local! {
+    static STATE: std::cell::RefCell<Option<ListState>> = const { std::cell::RefCell::new(None) };
+}
+
+/// `--worker list` 진입 — 창을 닫을 때까지 메시지 루프. 종료 코드 0.
+pub fn run() -> u32 {
+    unsafe {
+        let Ok(hinst) = GetModuleHandleW(None) else {
+            return 1;
+        };
+        let wc = WNDCLASSW {
+            lpszClassName: CLASS,
+            lpfnWndProc: Some(wnd_proc),
+            hInstance: hinst.into(),
+            hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
+            ..Default::default()
+        };
+        RegisterClassW(&wc);
+        let Ok(hwnd) = CreateWindowExW(
+            WINDOW_EX_STYLE(0),
+            CLASS,
+            w!("Nexa MemKeeper — 프로세스 목록"),
+            WS_OVERLAPPEDWINDOW | WS_VSCROLL | WS_VISIBLE,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            720,
+            600,
+            None,
+            None,
+            Some(hinst.into()),
+            None,
+        ) else {
+            return 1;
+        };
+        let _ = ShowWindow(hwnd, SW_SHOWNORMAL);
+        let _ = SetForegroundWindow(hwnd);
+        let mut msg = MSG::default();
+        while GetMessageW(&mut msg, None, 0, 0).0 > 0 {
+            let _ = TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+        0
+    }
+}
+
+/// 상단 메뉴바 구성(Top-down) — 파일 / 메모리 / 설정 / 도움말.
+unsafe fn build_menu(hwnd: HWND) -> HMENU {
+    let bar = CreateMenu().unwrap_or_default();
+
+    let file = CreatePopupMenu().unwrap_or_default();
+    let _ = AppendMenuW(file, MF_STRING, ID_REFRESH, w!("새로 고침(&R)\tF5"));
+    let _ = AppendMenuW(file, MF_SEPARATOR, 0, None);
+    let _ = AppendMenuW(file, MF_STRING, ID_CLOSE, w!("닫기(&X)"));
+    let _ = AppendMenuW(bar, MF_POPUP, file.0 as usize, w!("파일(&F)"));
+
+    let mem = CreatePopupMenu().unwrap_or_default();
+    let _ = AppendMenuW(mem, MF_STRING, ID_CLEAN_ALL, w!("지금 정리(&C) — 전체"));
+    let _ = AppendMenuW(mem, MF_SEPARATOR, 0, None);
+    let _ = AppendMenuW(
+        mem,
+        MF_STRING,
+        ID_TRIM_SEL,
+        w!("선택 프로세스 메모리 회수(&T)"),
+    );
+    let _ = AppendMenuW(mem, MF_STRING, ID_KILL_SEL, w!("선택 프로세스 종료(&K)…"));
+    let _ = AppendMenuW(
+        mem,
+        MF_STRING,
+        ID_KILL_TREE_SEL,
+        w!("선택 프로세스 트리 종료(&R)…"),
+    );
+    let _ = AppendMenuW(
+        mem,
+        MF_STRING,
+        ID_KILL_THREAD_SEL,
+        w!("선택 쓰레드 종료(&E)…"),
+    );
+    let _ = AppendMenuW(bar, MF_POPUP, mem.0 as usize, w!("메모리(&M)"));
+
+    let interval = CreatePopupMenu().unwrap_or_default();
+    let _ = AppendMenuW(interval, MF_STRING, ID_REFRESH_1S, w!("1초"));
+    let _ = AppendMenuW(interval, MF_STRING, ID_REFRESH_2S, w!("2초 (기본)"));
+    let _ = AppendMenuW(interval, MF_STRING, ID_REFRESH_5S, w!("5초"));
+
+    let cfg = CreatePopupMenu().unwrap_or_default();
+    let _ = AppendMenuW(
+        cfg,
+        MF_STRING,
+        ID_AUTORUN,
+        w!("Windows 시작 시 자동 실행(&A)"),
+    );
+    let _ = AppendMenuW(cfg, MF_POPUP, interval.0 as usize, w!("목록 갱신 주기(&I)"));
+    let _ = AppendMenuW(cfg, MF_SEPARATOR, 0, None);
+    let _ = AppendMenuW(
+        cfg,
+        MF_STRING | MF_GRAYED,
+        ID_PREFS,
+        w!("환경 설정(&P)… (M4 예정)"),
+    );
+    let _ = AppendMenuW(bar, MF_POPUP, cfg.0 as usize, w!("설정(&S)"));
+
+    let help = CreatePopupMenu().unwrap_or_default();
+    let _ = AppendMenuW(help, MF_STRING, ID_ABOUT, w!("정보(&A)"));
+    let _ = AppendMenuW(bar, MF_POPUP, help.0 as usize, w!("도움말(&H)"));
+
+    let _ = SetMenu(hwnd, Some(bar));
+    bar
+}
+
+/// 메뉴 체크 상태 동기화(자동 실행·갱신 주기).
+unsafe fn sync_menu_checks(menu: HMENU, refresh_ms: u32) {
+    let on = autorun_enabled();
+    CheckMenuItem(
+        menu,
+        ID_AUTORUN as u32,
+        MF_BYCOMMAND.0 | if on { MF_CHECKED.0 } else { MF_UNCHECKED.0 },
+    );
+    for (id, ms) in [
+        (ID_REFRESH_1S, 1_000u32),
+        (ID_REFRESH_2S, 2_000),
+        (ID_REFRESH_5S, 5_000),
+    ] {
+        CheckMenuItem(
+            menu,
+            id as u32,
+            MF_BYCOMMAND.0
+                | if refresh_ms == ms {
+                    MF_CHECKED.0
+                } else {
+                    MF_UNCHECKED.0
+                },
+        );
+    }
+}
+
+unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+    match msg {
+        WM_CREATE => {
+            let mut client = RECT::default();
+            let _ = GetClientRect(hwnd, &mut client);
+            let menu = build_menu(hwnd);
+            STATE.with(|s| {
+                *s.borrow_mut() = Some(ListState {
+                    procs: Vec::new(),
+                    rows: Vec::new(),
+                    expanded: HashSet::new(),
+                    top: 0,
+                    sel: (0, 0),
+                    sort_key: SortKey::PrivateWs,
+                    sort_asc: false, // 점유 큰 순 = 기본
+                    refresh_ms: crate::popup::REFRESH_MS,
+                    font: make_font(-12, 400),
+                    font_head: make_font(-12, 600),
+                    client,
+                    menu,
+                })
+            });
+            reload();
+            sync_menu_checks(menu, crate::popup::REFRESH_MS);
+            SetTimer(Some(hwnd), TIMER_REFRESH, crate::popup::REFRESH_MS, None);
+            sync_scrollbar(hwnd);
+            LRESULT(0)
+        }
+        WM_SIZE => {
+            with_state(|st| {
+                let _ = GetClientRect(hwnd, &mut st.client);
+                st.top = st.top.min(st.max_top());
+            });
+            sync_scrollbar(hwnd);
+            let _ = InvalidateRect(Some(hwnd), None, false);
+            LRESULT(0)
+        }
+        WM_TIMER => {
+            reload();
+            sync_scrollbar(hwnd);
+            let _ = InvalidateRect(Some(hwnd), None, false);
+            LRESULT(0)
+        }
+        WM_COMMAND => {
+            on_command(hwnd, wp.0 & 0xFFFF);
+            LRESULT(0)
+        }
+        WM_PAINT => {
+            paint(hwnd);
+            LRESULT(0)
+        }
+        WM_VSCROLL => {
+            let code = (wp.0 & 0xFFFF) as i32;
+            with_state(|st| {
+                let page = st.visible_rows();
+                let new_top = match code {
+                    c if c == SB_LINEUP.0 => st.top - 1,
+                    c if c == SB_LINEDOWN.0 => st.top + 1,
+                    c if c == SB_PAGEUP.0 => st.top - page,
+                    c if c == SB_PAGEDOWN.0 => st.top + page,
+                    c if c == SB_TOP.0 => 0,
+                    c if c == SB_BOTTOM.0 => st.max_top(),
+                    c if c == SB_THUMBPOSITION.0 || c == SB_THUMBTRACK.0 => track_pos(hwnd),
+                    _ => st.top,
+                };
+                st.top = new_top.clamp(0, st.max_top());
+            });
+            sync_scrollbar(hwnd);
+            let _ = InvalidateRect(Some(hwnd), None, false);
+            LRESULT(0)
+        }
+        WM_MOUSEWHEEL => {
+            let delta = ((wp.0 >> 16) & 0xFFFF) as i16 as i32;
+            with_state(|st| st.top = (st.top - delta / 120 * 3).clamp(0, st.max_top()));
+            sync_scrollbar(hwnd);
+            let _ = InvalidateRect(Some(hwnd), None, false);
+            LRESULT(0)
+        }
+        WM_LBUTTONDOWN => {
+            let (x, y) = (lo_i16(lp), hi_i16(lp));
+            if y < HEAD_H {
+                // 헤더 클릭 = 정렬(같은 열 재클릭 시 방향 반전)
+                with_state(|st| {
+                    if let Some(key) = col_at(st.client.right, x) {
+                        if st.sort_key == key {
+                            st.sort_asc = !st.sort_asc;
+                        } else {
+                            st.sort_key = key;
+                            // 숫자 열은 큰 값부터, 이름은 사전순이 자연스럽다
+                            st.sort_asc = matches!(key, SortKey::Name);
+                        }
+                        rebuild(st);
+                    }
+                });
+                sync_scrollbar(hwnd);
+            } else {
+                let toggled = with_state_ret(|st| {
+                    let Some(r) = row_at(st, y).cloned() else {
+                        st.sel = (0, 0);
+                        return false;
+                    };
+                    st.sel = (r.pid, r.tid);
+                    // 좌측 확장 버튼 영역 클릭 = 펼침/접힘
+                    if r.expandable && x >= expander_x(r.depth) && x < expander_x(r.depth) + EXP_W {
+                        if !st.expanded.insert(r.pid) {
+                            st.expanded.remove(&r.pid);
+                        }
+                        rebuild(st);
+                        return true;
+                    }
+                    false
+                })
+                .unwrap_or(false);
+                if toggled {
+                    sync_scrollbar(hwnd);
+                }
+            }
+            let _ = InvalidateRect(Some(hwnd), None, false);
+            LRESULT(0)
+        }
+        WM_RBUTTONUP => {
+            let y = hi_i16(lp);
+            let target = with_state_ret(|st| {
+                let hit = row_at(st, y).cloned();
+                if let Some(r) = &hit {
+                    st.sel = (r.pid, r.tid);
+                }
+                hit
+            })
+            .flatten();
+            let _ = InvalidateRect(Some(hwnd), None, false);
+            if let Some(r) = target {
+                item_menu(hwnd, &r);
+            }
+            LRESULT(0)
+        }
+        WM_DESTROY => {
+            let _ = KillTimer(Some(hwnd), TIMER_REFRESH);
+            STATE.with(|s| {
+                if let Some(st) = s.borrow_mut().take() {
+                    let _ = DeleteObject(st.font.into());
+                    let _ = DeleteObject(st.font_head.into());
+                    let _ = DestroyMenu(st.menu);
+                }
+            });
+            PostQuitMessage(0);
+            LRESULT(0)
+        }
+        _ => DefWindowProcW(hwnd, msg, wp, lp),
+    }
+}
+
+unsafe fn on_command(hwnd: HWND, id: usize) {
+    match id {
+        ID_REFRESH => {
+            reload();
+            sync_scrollbar(hwnd);
+            let _ = InvalidateRect(Some(hwnd), None, false);
+        }
+        ID_CLOSE => {
+            let _ = DestroyWindow(hwnd);
+        }
+        ID_CLEAN_ALL => {
+            let r = crate::worker::run_clean();
+            let outcome = mk_core::decode_clean_result(r);
+            let (title, body) = mk_core::clean_report(outcome);
+            info_box(hwnd, &title, &body);
+            reload();
+            let _ = InvalidateRect(Some(hwnd), None, false);
+        }
+        ID_TRIM_SEL | ID_KILL_SEL | ID_KILL_TREE_SEL | ID_KILL_THREAD_SEL => {
+            let sel = with_state_ret(|st| st.selected().cloned()).flatten();
+            let Some(row) = sel else {
+                info_box(hwnd, "선택 없음", "목록에서 항목을 먼저 선택하세요.");
+                return;
+            };
+            run_row_action(hwnd, &row, id);
+        }
+        ID_AUTORUN => {
+            let now = autorun_enabled();
+            let ok = set_autorun(!now);
+            if !ok {
+                info_box(hwnd, "자동 실행", "설정을 변경하지 못했습니다.");
+            }
+            with_state(|st| sync_menu_checks(st.menu, st.refresh_ms));
+        }
+        ID_REFRESH_1S | ID_REFRESH_2S | ID_REFRESH_5S => {
+            let ms = match id {
+                ID_REFRESH_1S => 1_000,
+                ID_REFRESH_5S => 5_000,
+                _ => 2_000,
+            };
+            with_state(|st| {
+                st.refresh_ms = ms;
+                sync_menu_checks(st.menu, ms);
+            });
+            SetTimer(Some(hwnd), TIMER_REFRESH, ms, None);
+        }
+        ID_ABOUT => info_box(
+            hwnd,
+            "Nexa MemKeeper",
+            "트레이 상주 초경량 메모리 최적화 도구\nSosomLab · PolyForm Noncommercial 1.0.0",
+        ),
+        _ => {}
+    }
+}
+
+unsafe fn act(hwnd: HWND, ok: bool) {
+    if !ok {
+        info_box(
+            hwnd,
+            "처리 실패",
+            "관리자 권한이 필요하거나 보호 대상일 수 있습니다.",
+        );
+    }
+    reload();
+    let _ = InvalidateRect(Some(hwnd), None, false);
+}
+
+unsafe fn info_box(hwnd: HWND, title: &str, body: &str) {
+    let t: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+    let b: Vec<u16> = body.encode_utf16().chain(std::iter::once(0)).collect();
+    MessageBoxW(
+        Some(hwnd),
+        PCWSTR(b.as_ptr()),
+        PCWSTR(t.as_ptr()),
+        MB_OK | MB_ICONINFORMATION,
+    );
+}
+
+unsafe fn confirm(hwnd: HWND, title: &str, body: &str) -> bool {
+    let t: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+    let b: Vec<u16> = body.encode_utf16().chain(std::iter::once(0)).collect();
+    MessageBoxW(
+        Some(hwnd),
+        PCWSTR(b.as_ptr()),
+        PCWSTR(t.as_ptr()),
+        MB_YESNO | MB_ICONWARNING,
+    ) == IDYES
+}
+
+fn with_state(f: impl FnOnce(&mut ListState)) {
+    STATE.with(|s| {
+        if let Some(st) = s.borrow_mut().as_mut() {
+            f(st)
+        }
+    });
+}
+
+fn with_state_ret<T>(f: impl FnOnce(&mut ListState) -> T) -> Option<T> {
+    STATE.with(|s| s.borrow_mut().as_mut().map(f))
+}
+
+/// 목록 재수집 + 트리 재구성(정렬·펼침·스크롤·선택 유지).
+fn reload() {
+    let all = crate::procs::enumerate();
+    with_state(|st| {
+        st.procs = all;
+        rebuild(st);
+    });
+}
+
+/// 수집본은 그대로 두고 화면 행만 다시 만든다(정렬·펼침 변경 시).
+fn rebuild(st: &mut ListState) {
+    st.rows = mk_core::build_rows(&st.procs, st.sort_key, st.sort_asc, &st.expanded);
+    st.top = st.top.min(st.max_top());
+}
+
+fn lo_i16(lp: LPARAM) -> i32 {
+    (lp.0 & 0xFFFF) as i16 as i32
+}
+fn hi_i16(lp: LPARAM) -> i32 {
+    ((lp.0 >> 16) & 0xFFFF) as i16 as i32
+}
+
+fn row_at(st: &ListState, y: i32) -> Option<&Row> {
+    if y < HEAD_H {
+        return None;
+    }
+    let idx = st.top + (y - HEAD_H) / ROW_H;
+    if idx - st.top >= st.visible_rows() {
+        return None;
+    }
+    st.rows.get(idx as usize)
+}
+
+/// 들여쓰기 폭·확장 버튼 크기(트리 표현).
+const INDENT: i32 = 16;
+const EXP_W: i32 = 14;
+
+/// 깊이별 확장 버튼 x 시작 좌표.
+fn expander_x(depth: i32) -> i32 {
+    8 + depth * INDENT
+}
+
+/// x좌표 → 헤더 열의 정렬 기준.
+fn col_at(width: i32, x: i32) -> Option<SortKey> {
+    col_bounds(width)
+        .iter()
+        .enumerate()
+        .find(|(_, (x0, x1))| x >= *x0 && x < *x1)
+        .map(|(i, _)| COLS[i].1)
+}
+
+/// 열 x 경계 — 이름 열이 남는 폭을 흡수.
+fn col_bounds(width: i32) -> Vec<(i32, i32)> {
+    let fixed: i32 = COLS.iter().skip(1).map(|c| c.3).sum();
+    let name_w = (width - fixed - 16).max(120);
+    let mut out = Vec::with_capacity(COLS.len());
+    let mut x = 8;
+    for (i, c) in COLS.iter().enumerate() {
+        let w = if i == 0 { name_w } else { c.3 };
+        out.push((x, x + w));
+        x += w;
+    }
+    out
+}
+
+unsafe fn track_pos(hwnd: HWND) -> i32 {
+    let mut si = SCROLLINFO {
+        cbSize: std::mem::size_of::<SCROLLINFO>() as u32,
+        fMask: SIF_TRACKPOS,
+        ..Default::default()
+    };
+    let _ = GetScrollInfo(hwnd, SB_VERT, &mut si);
+    si.nTrackPos
+}
+
+unsafe fn sync_scrollbar(hwnd: HWND) {
+    let (len, page, pos) =
+        with_state_ret(|st| (st.rows.len() as i32, st.visible_rows(), st.top)).unwrap_or((0, 1, 0));
+    let si = SCROLLINFO {
+        cbSize: std::mem::size_of::<SCROLLINFO>() as u32,
+        fMask: SCROLLINFO_MASK(SIF_RANGE.0 | SIF_POS.0 | SIF_PAGE.0),
+        nMin: 0,
+        nMax: (len - 1).max(0),
+        nPage: page as u32,
+        nPos: pos,
+        nTrackPos: 0,
+    };
+    SetScrollInfo(hwnd, SB_VERT, &si, true);
+}
+
+unsafe fn make_font(height: i32, weight: i32) -> HFONT {
+    CreateFontW(
+        height,
+        0,
+        0,
+        0,
+        weight,
+        0,
+        0,
+        0,
+        DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS,
+        CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY,
+        DEFAULT_PITCH.0 as u32,
+        w!("Segoe UI"),
+    )
+}
+
+unsafe fn sys(idx: SYS_COLOR_INDEX) -> COLORREF {
+    COLORREF(GetSysColor(idx))
+}
+
+unsafe fn fill(dc: HDC, rc: &RECT, color: COLORREF) {
+    let br: HBRUSH = CreateSolidBrush(color);
+    FillRect(dc, rc, br);
+    let _ = DeleteObject(br.into());
+}
+
+unsafe fn text(dc: HDC, s: &str, rc: RECT, flags: DRAW_TEXT_FORMAT, color: COLORREF) {
+    let mut buf: Vec<u16> = s.encode_utf16().collect();
+    if buf.is_empty() {
+        return;
+    }
+    let mut rc = rc;
+    SetTextColor(dc, color);
+    DrawTextW(dc, &mut buf, &mut rc, flags | DT_SINGLELINE | DT_NOPREFIX);
+}
+
+/// 색 혼합 — 그리드 선·교대 행 배경용(시스템 색에서 파생해 테마와 어울리게).
+fn blend(a: COLORREF, b: COLORREF, t: u32) -> COLORREF {
+    let mix = |sa: u32, sb: u32| ((sa * (100 - t) + sb * t) / 100) & 0xFF;
+    let (ar, ag, ab) = (a.0 & 0xFF, (a.0 >> 8) & 0xFF, (a.0 >> 16) & 0xFF);
+    let (br, bg, bb) = (b.0 & 0xFF, (b.0 >> 8) & 0xFF, (b.0 >> 16) & 0xFF);
+    COLORREF(mix(ar, br) | (mix(ag, bg) << 8) | (mix(ab, bb) << 16))
+}
+
+unsafe fn paint(hwnd: HWND) {
+    let mut ps = PAINTSTRUCT::default();
+    let hdc = BeginPaint(hwnd, &mut ps);
+    let (w, h) = with_state_ret(|st| (st.client.right, st.client.bottom)).unwrap_or((0, 0));
+    if w <= 0 || h <= 0 {
+        let _ = EndPaint(hwnd, &ps);
+        return;
+    }
+    let mem = CreateCompatibleDC(Some(hdc));
+    let bmp = CreateCompatibleBitmap(hdc, w, h);
+    let old_bmp = SelectObject(mem, bmp.into());
+    SetBkMode(mem, TRANSPARENT);
+
+    let bg = sys(COLOR_WINDOW);
+    let fg = sys(COLOR_WINDOWTEXT);
+    let gray = sys(COLOR_GRAYTEXT);
+    let face = sys(COLOR_BTNFACE);
+    let hi = sys(COLOR_HIGHLIGHT);
+    let hi_text = sys(COLOR_HIGHLIGHTTEXT);
+    let grid = blend(bg, gray, 25); // 그리드 선
+    let alt = blend(bg, face, 45); // 교대 행 배경
+    fill(
+        mem,
+        &RECT {
+            left: 0,
+            top: 0,
+            right: w,
+            bottom: h,
+        },
+        bg,
+    );
+    let cols = col_bounds(w);
+
+    // ── 헤더(정렬 표시 포함)
+    fill(
+        mem,
+        &RECT {
+            left: 0,
+            top: 0,
+            right: w,
+            bottom: HEAD_H,
+        },
+        face,
+    );
+    let (skey, sasc) =
+        with_state_ret(|st| (st.sort_key, st.sort_asc)).unwrap_or((SortKey::PrivateWs, false));
+    let old_font = SelectObject(mem, with_state_ret(|st| st.font_head).unwrap().into());
+    for (i, (title, key, right, _)) in COLS.iter().enumerate() {
+        let (x0, x1) = cols[i];
+        let label = if *key == skey {
+            format!("{title} {}", if sasc { "▲" } else { "▼" })
+        } else {
+            title.to_string()
+        };
+        text(
+            mem,
+            &label,
+            RECT {
+                left: x0,
+                top: 0,
+                right: x1,
+                bottom: HEAD_H,
+            },
+            if *right { DT_RIGHT } else { DT_LEFT } | DT_VCENTER,
+            fg,
+        );
+        if i > 0 {
+            fill(
+                mem,
+                &RECT {
+                    left: x0 - 4,
+                    top: 4,
+                    right: x0 - 3,
+                    bottom: HEAD_H - 4,
+                },
+                grid,
+            );
+        }
+    }
+    fill(
+        mem,
+        &RECT {
+            left: 0,
+            top: HEAD_H - 1,
+            right: w,
+            bottom: HEAD_H,
+        },
+        grid,
+    );
+
+    // ── 행
+    SelectObject(mem, with_state_ret(|st| st.font).unwrap().into());
+    with_state(|st| {
+        let vis = st.visible_rows();
+        for i in 0..vis {
+            let Some(p) = st.rows.get((st.top + i) as usize) else {
+                break;
+            };
+            let top = HEAD_H + i * ROW_H;
+            let rc = RECT {
+                left: 0,
+                top,
+                right: w,
+                bottom: top + ROW_H,
+            };
+            let selected = st.sel == (p.pid, p.tid);
+            if selected {
+                fill(mem, &rc, hi);
+            } else if (st.top + i) % 2 == 1 {
+                fill(mem, &rc, alt);
+            }
+            let is_thread = p.kind == RowKind::Thread;
+            let protected = !is_thread && mk_core::is_protected(&p.label);
+            let (name_c, val_c) = if selected {
+                (hi_text, hi_text)
+            } else if protected || is_thread {
+                (gray, gray) // 보호 대상·쓰레드 = 보조 정보
+            } else {
+                (fg, gray)
+            };
+
+            // 트리 들여쓰기 + 확장 버튼([+]/[-])
+            let ex = expander_x(p.depth);
+            if p.expandable {
+                text(
+                    mem,
+                    if p.expanded { "▾" } else { "▸" },
+                    RECT {
+                        left: ex,
+                        top,
+                        right: ex + EXP_W,
+                        bottom: top + ROW_H,
+                    },
+                    DT_LEFT | DT_VCENTER,
+                    if selected { hi_text } else { fg },
+                );
+            }
+            let name_x = ex + EXP_W + 2;
+            let cells = [
+                if protected {
+                    format!("{} 🔒", p.label)
+                } else {
+                    p.label.clone()
+                },
+                if is_thread {
+                    String::new()
+                } else {
+                    p.pid.to_string()
+                },
+                if is_thread {
+                    String::new()
+                } else {
+                    mk_core::fmt_size(p.private_ws)
+                },
+                if is_thread {
+                    String::new()
+                } else {
+                    mk_core::fmt_size(p.ws)
+                },
+                if is_thread {
+                    format!("{}회 전환", p.threads)
+                } else {
+                    p.threads.to_string()
+                },
+            ];
+            for (ci, s) in cells.iter().enumerate() {
+                let (x0, x1) = cols[ci];
+                let left = if ci == 0 { name_x } else { x0 };
+                text(
+                    mem,
+                    s,
+                    RECT {
+                        left,
+                        top,
+                        right: x1,
+                        bottom: top + ROW_H,
+                    },
+                    (if COLS[ci].2 { DT_RIGHT } else { DT_LEFT }) | DT_VCENTER | DT_END_ELLIPSIS,
+                    if ci == 0 { name_c } else { val_c },
+                );
+            }
+            fill(
+                mem,
+                &RECT {
+                    left: 0,
+                    top: top + ROW_H - 1,
+                    right: w,
+                    bottom: top + ROW_H,
+                },
+                grid,
+            );
+        }
+
+        // ── 상태 줄
+        let sy = h - STATUS_H;
+        fill(
+            mem,
+            &RECT {
+                left: 0,
+                top: sy,
+                right: w,
+                bottom: h,
+            },
+            face,
+        );
+        let sel_txt = st
+            .selected()
+            .map(|r| {
+                if r.kind == RowKind::Thread {
+                    format!(" · 선택: 쓰레드 {} (PID {})", r.tid, r.pid)
+                } else {
+                    format!(" · 선택: {} ({})", r.label, r.pid)
+                }
+            })
+            .unwrap_or_default();
+        text(
+            mem,
+            &format!(
+                "프로세스 {}개 · {}초 갱신 · ▸ 클릭=쓰레드/자식 펼치기 · 헤더=정렬 · 우클릭=회수/종료{sel_txt}",
+                st.procs.len(),
+                st.refresh_ms / 1000
+            ),
+            RECT { left: 8, top: sy, right: w - 8, bottom: h },
+            DT_LEFT | DT_VCENTER | DT_END_ELLIPSIS,
+            fg,
+        );
+    });
+
+    SelectObject(mem, old_font);
+    let _ = BitBlt(hdc, 0, 0, w, h, Some(mem), 0, 0, SRCCOPY);
+    SelectObject(mem, old_bmp);
+    let _ = DeleteObject(bmp.into());
+    let _ = DeleteDC(mem);
+    let _ = EndPaint(hwnd, &ps);
+}
+
+/// 행 우클릭 메뉴 — 쓰레드 행이면 쓰레드 종료, 프로세스 행이면 회수/종료/트리 종료(FR-3).
+unsafe fn item_menu(hwnd: HWND, row: &Row) {
+    let Ok(menu) = CreatePopupMenu() else { return };
+    if row.kind == RowKind::Thread {
+        let _ = AppendMenuW(menu, MF_STRING, ID_KILL_THREAD_SEL, w!("쓰레드 종료(&E)…"));
+    } else {
+        let protected = mk_core::is_protected(&row.label);
+        let flags = if protected {
+            MF_STRING | MF_GRAYED
+        } else {
+            MF_STRING
+        };
+        let _ = AppendMenuW(menu, flags, ID_TRIM_SEL, w!("메모리 회수(&T)"));
+        let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
+        let _ = AppendMenuW(menu, flags, ID_KILL_SEL, w!("프로세스 종료(&K)…"));
+        let _ = AppendMenuW(menu, flags, ID_KILL_TREE_SEL, w!("프로세스 트리 종료(&R)…"));
+        if protected {
+            let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
+            let _ = AppendMenuW(
+                menu,
+                MF_STRING | MF_GRAYED,
+                0,
+                w!("보호 대상 — 조작할 수 없음"),
+            );
+        }
+    }
+    let mut pt = POINT::default();
+    let _ = GetCursorPos(&mut pt);
+    let _ = SetForegroundWindow(hwnd);
+    let cmd = TrackPopupMenu(
+        menu,
+        TPM_RIGHTBUTTON | TPM_RETURNCMD,
+        pt.x,
+        pt.y,
+        None,
+        hwnd,
+        None,
+    );
+    let _ = DestroyMenu(menu);
+    if cmd.0 != 0 {
+        run_row_action(hwnd, row, cmd.0 as usize);
+    }
+}
+
+/// 선택 행에 대한 실제 동작 — 메뉴바·컨텍스트 메뉴 공용 경로.
+unsafe fn run_row_action(hwnd: HWND, row: &Row, id: usize) {
+    match id {
+        ID_TRIM_SEL if row.kind == RowKind::Process => {
+            act(hwnd, crate::worker::run_trim(row.pid) == 0)
+        }
+        ID_KILL_SEL if row.kind == RowKind::Process => {
+            if confirm(
+                hwnd,
+                "프로세스 종료 확인",
+                &format!(
+                    "{} (PID {})을(를) 종료할까요?\n저장하지 않은 작업이 손실될 수 있습니다.",
+                    row.label, row.pid
+                ),
+            ) {
+                act(hwnd, crate::worker::run_kill(row.pid) == 0);
+            }
+        }
+        ID_KILL_TREE_SEL if row.kind == RowKind::Process => {
+            let n =
+                with_state_ret(|st| mk_core::descendants(&st.procs, row.pid).len()).unwrap_or(0);
+            if confirm(
+                hwnd,
+                "프로세스 트리 종료 확인",
+                &format!(
+                    "{} (PID {})와(과) 하위 프로세스 {}개를 모두 종료할까요?\n저장하지 않은 작업이 손실될 수 있습니다.",
+                    row.label, row.pid, n
+                ),
+            ) {
+                act(hwnd, crate::worker::run_kill_tree(row.pid) == 0);
+            }
+        }
+        ID_KILL_THREAD_SEL if row.kind == RowKind::Thread => {
+            if confirm(
+                hwnd,
+                "쓰레드 종료 확인",
+                &format!(
+                    "쓰레드 {}(PID {})을(를) 강제 종료할까요?\n\
+                     ⚠️ 쓰레드 강제 종료는 해당 프로그램의 상태를 깨뜨릴 수 있습니다.",
+                    row.tid, row.pid
+                ),
+            ) {
+                act(hwnd, crate::worker::run_kill_thread(row.tid) == 0);
+            }
+        }
+        ID_TRIM_SEL | ID_KILL_SEL | ID_KILL_TREE_SEL => {
+            info_box(hwnd, "대상 아님", "프로세스 행을 선택하세요.")
+        }
+        ID_KILL_THREAD_SEL => info_box(hwnd, "대상 아님", "쓰레드 행을 선택하세요."),
+        _ => {}
+    }
+}
+
+// ---- 자동 실행(HKCU Run) — 사용자가 메뉴로 켤 때만 레지스트리를 건드린다 ----
+
+/// 현재 자동 실행 등록 여부.
+pub fn autorun_enabled() -> bool {
+    unsafe {
+        let mut key = HKEY::default();
+        if RegOpenKeyExW(HKEY_CURRENT_USER, RUN_KEY, Some(0), KEY_READ, &mut key).is_err() {
+            return false;
+        }
+        let mut size = 0u32;
+        let found = RegQueryValueExW(key, RUN_VALUE, None, None, None, Some(&mut size)).is_ok();
+        let _ = RegCloseKey(key);
+        found
+    }
+}
+
+/// 자동 실행 등록/해제. 실패 시 false.
+pub fn set_autorun(enable: bool) -> bool {
+    unsafe {
+        let mut key = HKEY::default();
+        if RegOpenKeyExW(
+            HKEY_CURRENT_USER,
+            RUN_KEY,
+            Some(0),
+            KEY_READ | KEY_WRITE,
+            &mut key,
+        )
+        .is_err()
+        {
+            return false;
+        }
+        let ok = if enable {
+            let Ok(exe) = std::env::current_exe() else {
+                let _ = RegCloseKey(key);
+                return false;
+            };
+            // 경로에 공백이 있어도 안전하도록 따옴표로 감싼다
+            let quoted: Vec<u16> = format!("\"{}\"", exe.display())
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect();
+            let bytes = std::slice::from_raw_parts(quoted.as_ptr() as *const u8, quoted.len() * 2);
+            RegSetValueExW(key, RUN_VALUE, Some(0), REG_SZ, Some(bytes)).is_ok()
+        } else {
+            RegDeleteValueW(key, RUN_VALUE).is_ok()
+        };
+        let _ = RegCloseKey(key);
+        ok
+    }
+}
+
+/// 자동 실행 값에 남는 PWSTR 경고 방지용(참조 유지 목적 — 사용하지 않음).
+const _: Option<PWSTR> = None;

@@ -19,9 +19,10 @@ use windows::Win32::Security::{
 use windows::Win32::System::ProcessStatus::{K32EmptyWorkingSet, K32EnumProcesses};
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 use windows::Win32::System::Threading::{
-    GetCurrentProcess, GetCurrentProcessId, OpenProcess, OpenProcessToken,
-    QueryFullProcessImageNameW, TerminateProcess, WaitForSingleObject, PROCESS_NAME_WIN32,
-    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SET_QUOTA, PROCESS_TERMINATE,
+    GetCurrentProcess, GetCurrentProcessId, OpenProcess, OpenProcessToken, OpenThread,
+    QueryFullProcessImageNameW, TerminateProcess, TerminateThread, WaitForSingleObject,
+    PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SET_QUOTA, PROCESS_TERMINATE,
+    THREAD_TERMINATE,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetWindowThreadProcessId, PostMessageW, WM_CLOSE,
@@ -187,6 +188,37 @@ pub fn run_kill(pid: u32) -> u32 {
         } else {
             TerminateProcess(h, 1).is_ok() && WaitForSingleObject(h, 2_000) == WAIT_OBJECT_0
         };
+        let _ = CloseHandle(h);
+        u32::from(!ok)
+    }
+}
+
+/// `--worker killtree <pid>` — 프로세스 트리 종료(FR-3). 자식 → 부모 순으로 종료해
+/// 부모가 죽는 사이 자식이 다시 뜨는 것을 막는다. 하나라도 실패하면 1.
+pub fn run_kill_tree(pid: u32) -> u32 {
+    let procs = crate::procs::enumerate();
+    let mut targets = mk_core::descendants(&procs, pid);
+    // 깊은 자손이 뒤에 쌓이므로 역순 = 잎부터
+    targets.reverse();
+    targets.push(pid);
+    let mut failed = 0;
+    for t in targets {
+        if run_kill(t) != 0 {
+            failed += 1;
+        }
+    }
+    u32::from(failed > 0)
+}
+
+/// `--worker killthread <tid>` — 단일 쓰레드 종료(FR-3). 성공 0 / 실패 1.
+/// ⚠️ 프로세스 상태를 깨뜨릴 수 있는 조작이라 UI에서 확인을 받은 뒤에만 호출한다.
+pub fn run_kill_thread(tid: u32) -> u32 {
+    unsafe {
+        enable_privileges();
+        let Ok(h) = OpenThread(THREAD_TERMINATE, false, tid) else {
+            return 1;
+        };
+        let ok = TerminateThread(h, 1).is_ok();
         let _ = CloseHandle(h);
         u32::from(!ok)
     }

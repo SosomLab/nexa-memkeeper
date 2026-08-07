@@ -5,8 +5,31 @@
 //! 낄 수 없다([15 §4 정정](../../../docs/15-dev-methodology.md)). 대신 **버퍼 워킹은 경계 검사 필수** —
 //! 매 항목에서 오프셋·구조체 크기·문자열 길이를 검증하고, 어긋나면 그 지점에서 중단한다.
 
-use mk_core::ProcInfo;
+use mk_core::{ProcInfo, ThreadInfo};
 use windows::Win32::System::WindowsProgramming::SYSTEM_PROCESS_INFORMATION;
+
+/// 각 프로세스 항목 뒤에 `NumberOfThreads`개가 이어지는 쓰레드 정보(x64 80바이트).
+/// windows crate 미노출 — NT 문서 레이아웃대로 선언하고 크기를 컴파일 타임에 고정한다.
+#[repr(C)]
+struct SystemThreadInformation {
+    kernel_time: i64,
+    user_time: i64,
+    create_time: i64,
+    wait_time: u32,
+    _pad: u32,
+    start_address: *mut core::ffi::c_void,
+    unique_process: isize,
+    unique_thread: isize,
+    priority: i32,
+    base_priority: i32,
+    context_switches: u32,
+    thread_state: u32,
+    wait_reason: u32,
+    _pad2: u32,
+}
+const _: () = assert!(std::mem::size_of::<SystemThreadInformation>() == 80);
+/// 프로세스 항목 헤더 크기 = 쓰레드 배열 시작 오프셋(x64 256바이트).
+const _: () = assert!(std::mem::size_of::<SYSTEM_PROCESS_INFORMATION>() == 256);
 
 #[link(name = "ntdll", kind = "raw-dylib")]
 extern "system" {
@@ -79,10 +102,13 @@ fn parse(buf: &[u8]) -> Vec<ProcInfo> {
         let name = image_name(p, pid);
         out.push(ProcInfo {
             pid,
+            // Reserved2 = InheritedFromUniqueProcessId(부모 PID) — crate가 이름을 가린 필드
+            ppid: p.Reserved2 as usize as u32,
             name,
             private_ws,
             ws: p.WorkingSetSize as u64,
             threads: p.NumberOfThreads,
+            thread_list: parse_threads(buf, off, p.NumberOfThreads),
         });
 
         let next = p.NextEntryOffset as usize;
@@ -96,6 +122,29 @@ fn parse(buf: &[u8]) -> Vec<ProcInfo> {
             break; // 전진하지 않는 오프셋 = 손상 — 무한 루프 방지
         }
         off = new_off;
+    }
+    out
+}
+
+/// 프로세스 항목 뒤에 붙은 쓰레드 배열 파싱 — 버퍼 경계를 넘지 않는 개수만 취한다(15 §4).
+fn parse_threads(buf: &[u8], proc_off: usize, count: u32) -> Vec<ThreadInfo> {
+    const HDR: usize = std::mem::size_of::<SYSTEM_PROCESS_INFORMATION>();
+    const T: usize = std::mem::size_of::<SystemThreadInformation>();
+    let start = proc_off + HDR;
+    if start > buf.len() {
+        return Vec::new();
+    }
+    let fits = (buf.len() - start) / T;
+    let n = (count as usize).min(fits);
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        // SAFETY: start + (i+1)*T ≤ buf.len()를 위에서 보장했고 커널이 8바이트 정렬을 준다.
+        let t = unsafe { &*(buf.as_ptr().add(start + i * T) as *const SystemThreadInformation) };
+        out.push(ThreadInfo {
+            tid: t.unique_thread as usize as u32,
+            state: t.thread_state,
+            context_switches: t.context_switches,
+        });
     }
     out
 }

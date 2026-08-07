@@ -40,7 +40,9 @@ const ROWS: i32 = 5;
 const BTN_H: i32 = 30;
 const H: i32 = HEAD_H + ROW_H * ROWS + 8 + BTN_H + PAD;
 const BTN_Y: i32 = HEAD_H + ROW_H * ROWS + 8;
-const BTN_W: i32 = (W - PAD * 2 - 12) / 3;
+/// 버튼 2개 — 지금 정리 · 목록 보기(설정은 트레이 우클릭 메뉴 전용, 사용자 확정 08-07).
+const BTN_N: i32 = 2;
+const BTN_W: i32 = (W - PAD * 2 - 6 * (BTN_N - 1)) / BTN_N;
 
 const CMD_TRIM: usize = 1;
 const CMD_KILL: usize = 2;
@@ -197,11 +199,17 @@ unsafe extern "system" fn popup_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARA
         }
         WM_LBUTTONUP => {
             if let Some(st) = st.as_mut() {
-                // 버튼 0 = 지금 정리(M2 활성), 1 = 목록 보기(M3), 2 = 설정(M4)
-                if hit_btn(lo_i16(lp), hi_i16(lp)) == 0 {
-                    let owner = st.owner;
-                    let _ = DestroyWindow(hwnd);
-                    crate::shell::request_clean(owner);
+                let owner = st.owner;
+                match hit_btn(lo_i16(lp), hi_i16(lp)) {
+                    0 => {
+                        let _ = DestroyWindow(hwnd);
+                        crate::shell::request_clean(owner);
+                    }
+                    1 => {
+                        let _ = DestroyWindow(hwnd);
+                        crate::shell::open_list();
+                    }
+                    _ => {}
                 }
             }
             LRESULT(0)
@@ -265,7 +273,7 @@ fn hit_btn(x: i32, y: i32) -> i32 {
     if !(BTN_Y..BTN_Y + BTN_H).contains(&y) {
         return -1;
     }
-    for i in 0..3 {
+    for i in 0..BTN_N {
         let bx = PAD + i * (BTN_W + 6);
         if x >= bx && x < bx + BTN_W {
             return i;
@@ -468,8 +476,8 @@ unsafe fn paint(hwnd: HWND, st: &PopupState) {
         }
     }
 
-    // 버튼 3개(1·2는 M3·M4 예정 — 회색)
-    let labels = ["지금 정리", "목록 보기…", "설정…"];
+    // 버튼 2개 — 설정은 트레이 우클릭 메뉴 전용(사용자 확정 08-07)
+    let labels = ["지금 정리", "목록 보기…"];
     for (i, label) in labels.iter().enumerate() {
         let i = i as i32;
         let bx = PAD + i * (BTN_W + 6);
@@ -479,23 +487,8 @@ unsafe fn paint(hwnd: HWND, st: &PopupState) {
             right: bx + BTN_W,
             bottom: BTN_Y + BTN_H,
         };
-        let enabled = i == 0;
-        fill(
-            mem,
-            &rc,
-            if enabled && st.hover_btn == i {
-                hi
-            } else {
-                face
-            },
-        );
-        let color = if !enabled {
-            gray
-        } else if st.hover_btn == i {
-            hi_text
-        } else {
-            fg
-        };
+        fill(mem, &rc, if st.hover_btn == i { hi } else { face });
+        let color = if st.hover_btn == i { hi_text } else { fg };
         text(
             mem,
             label,

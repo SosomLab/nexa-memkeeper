@@ -26,12 +26,13 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateIconIndirect, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyIcon,
-    DestroyMenu, DestroyWindow, DispatchMessageW, GetCursorPos, GetMessageW, GetSystemMetrics,
-    KillTimer, PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
-    SetForegroundWindow, SetTimer, TrackPopupMenu, HICON, ICONINFO, MF_GRAYED, MF_SEPARATOR,
-    MF_STRING, MSG, SM_CXSMICON, SM_CYSMICON, SW_SHOWNORMAL, TPM_BOTTOMALIGN, TPM_NONOTIFY,
-    TPM_RETURNCMD, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WM_APP, WM_CONTEXTMENU, WM_CREATE, WM_DESTROY,
-    WM_LBUTTONUP, WM_RBUTTONUP, WM_TIMER, WNDCLASSW, WS_OVERLAPPED,
+    DestroyMenu, DestroyWindow, DispatchMessageW, FindWindowW, GetCursorPos, GetMessageW,
+    GetSystemMetrics, KillTimer, PostMessageW, PostQuitMessage, RegisterClassW,
+    RegisterWindowMessageW, SetForegroundWindow, SetTimer, TrackPopupMenu, HICON, ICONINFO,
+    MF_GRAYED, MF_SEPARATOR, MF_STRING, MSG, SM_CXSMICON, SM_CYSMICON, SW_SHOWNORMAL,
+    TPM_BOTTOMALIGN, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WM_APP,
+    WM_CONTEXTMENU, WM_CREATE, WM_DESTROY, WM_LBUTTONUP, WM_RBUTTONUP, WM_TIMER, WNDCLASSW,
+    WS_OVERLAPPED,
 };
 
 const CLASS: PCWSTR = w!("NexaMemKeeperShell");
@@ -48,7 +49,8 @@ const POLL_MS: u32 = 5_000;
 const CMD_EXIT: usize = 100;
 const CMD_CLEAN: usize = 101;
 const CMD_ELEVATE: usize = 102;
-const CMD_TOP5: usize = 103;
+const CMD_LIST: usize = 103;
+const CMD_SETTINGS: usize = 104;
 
 thread_local! {
     /// 직전 표시 %(같으면 아이콘 재생성 생략 — 유휴 CPU ~0% 게이트).
@@ -229,6 +231,25 @@ unsafe fn notify_balloon(hwnd: HWND, title: &str, body: &str, ok: bool) {
 /// 팝업 등 외부 모듈에서 정리 요청(팝업 [지금 정리] 버튼).
 pub(crate) fn request_clean(hwnd: HWND) {
     spawn_clean(hwnd);
+}
+
+/// 전체 목록 창 열기 — 워커 프로세스(DR-7). 이미 떠 있으면 그 창을 앞으로 가져온다.
+pub(crate) fn open_list() {
+    unsafe {
+        let existing = FindWindowW(w!("NexaMemKeeperList"), None);
+        if let Ok(h) = existing {
+            if !h.is_invalid() {
+                let _ = SetForegroundWindow(h);
+                return;
+            }
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        // 창이 살아 있는 동안 워커가 상주하므로 대기하지 않는다(spawn 후 분리).
+        let _ = std::process::Command::new(exe)
+            .args(["--worker", "list"])
+            .spawn();
+    }
 }
 
 /// 단일 프로세스 대상 워커 요청(`trim`/`kill`) — 완료 시 셸이 결과를 풍선으로 알린다.
@@ -456,7 +477,13 @@ unsafe fn show_menu(hwnd: HWND) {
         MF_STRING
     };
     let _ = AppendMenuW(menu, clean_flags, CMD_CLEAN, w!("지금 정리(&C)"));
-    let _ = AppendMenuW(menu, MF_STRING, CMD_TOP5, w!("Top 5 보기(&T)"));
+    let _ = AppendMenuW(menu, MF_STRING, CMD_LIST, w!("목록 보기(&L)…"));
+    let _ = AppendMenuW(
+        menu,
+        MF_STRING | MF_GRAYED,
+        CMD_SETTINGS,
+        w!("설정(&S)… (M4)"),
+    );
     if !is_elevated() {
         let _ = AppendMenuW(
             menu,
@@ -486,9 +513,7 @@ unsafe fn show_menu(hwnd: HWND) {
             let _ = DestroyWindow(hwnd);
         }
         CMD_CLEAN => spawn_clean(hwnd),
-        CMD_TOP5 => {
-            crate::popup::show(hwnd);
-        }
+        CMD_LIST => open_list(),
         CMD_ELEVATE => restart_elevated(hwnd),
         _ => {}
     }
