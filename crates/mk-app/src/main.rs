@@ -4,12 +4,24 @@
 
 #[cfg(windows)]
 mod shell;
+#[cfg(windows)]
+mod worker;
 
 fn main() {
-    if std::env::args().any(|a| a == "--worker") {
-        // M1: 정리 엔진 실행 경로
-        eprintln!("worker: not implemented (M1)");
-        std::process::exit(2);
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--worker") {
+        #[cfg(windows)]
+        {
+            let code = match args.iter().position(|a| a == "--worker") {
+                Some(i) if args.get(i + 1).map(String::as_str) == Some("clean") => {
+                    worker::run_clean()
+                }
+                _ => mk_core::WORKER_ERR, // 알 수 없는 워커 작업
+            };
+            std::process::exit(code as i32);
+        }
+        #[cfg(not(windows))]
+        std::process::exit(mk_core::WORKER_ERR as i32);
     }
     #[cfg(windows)]
     if let Err(e) = shell::run() {
