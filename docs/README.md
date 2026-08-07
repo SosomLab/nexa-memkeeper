@@ -36,6 +36,7 @@
 | [09 설정 스키마](09-settings-schema.md) | `data\settings.ini` 키·기본값·범위·UI 배치(M4 구현 SSOT) |
 | [19 메모리 측정·회수 해설](19-memory-measurement-and-reclaim.md) | 📖 페이지 상태·측정 지표·대상 선정 파이프라인·회수 원리(다이어그램) |
 | [20 배포](20-packaging.md) | 📦 배포 2채널(설치형 Inno·포터블 ZIP)·`pack.ps1`·릴리스 체크리스트 |
+| [21 효용성 실측](21-effectiveness-measurement.md) | 🔬 **"주기적 정리가 성능에 도움이 되나"** — 판정 기준 4축 + 실험 5종 실측·판정·권고 |
 | 01 아키텍처 | ☐ 추후 작성 — M0~M1 구현으로 실체 확정 후 기록 |
 
 ## ③ 진행 경과 · 할 일
