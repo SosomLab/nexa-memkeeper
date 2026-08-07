@@ -31,6 +31,15 @@
 
 문서·git 규약과 라이선스 정책은 [`SosomLab/nexa-dir2`](https://github.com/SosomLab/nexa-dir2)의 검증 표준을 계승합니다.
 
+## 배포
+
+| 채널 | 파일 | 비고 |
+| --- | --- | --- |
+| 설치형 | `NexaMemKeeper-<ver>-setup.exe` | 프로그램 목록 등록 · 자동 실행 질문(**기본 체크**) · 승격 없는 사용자별 설치 |
+| 포터블 | `NexaMemKeeper-<ver>-portable.zip` | 압축 해제 후 바로 실행 · 설정은 exe 옆 `data\settings.ini` |
+
+만들기: `pwsh packaging\pack.ps1` (예산 게이트 내장 — 절차는 [docs/20](docs/20-packaging.md))
+
 ## 문서 — 📖 [문서 홈](docs/README.md)에서 시작
 
 바로가기: [현황 STATUS](docs/STATUS.md) · [기능·마일스톤](docs/MILESTONES.md) · [진행 DEVLOG](docs/DEVLOG.md) · [비전 00](docs/00-vision.md) · [결정 기록 10](docs/10-decision-record.md) · [메모리 측정·회수 해설 19](docs/19-memory-measurement-and-reclaim.md) · [이식 메모리](CLAUDE.md)
