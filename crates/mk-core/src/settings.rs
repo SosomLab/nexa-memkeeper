@@ -67,8 +67,8 @@ pub struct Settings {
     pub topn: u32,
     pub list_refresh_ms: u32,
     pub hide_pseudo: bool,
-    /// 평면 목록 여부 — **기본 false = 프로세스 트리**(부모-자식, 사용자 확정 08-07).
-    pub view_flat: bool,
+    /// 보기 모드 — `grouped`(**기본**, 작업 관리자식 분류·묶음) / `tree`(부모-자식) / `flat`(전체 나열).
+    pub view_mode: String,
     /// 쓰레드 행 표시 — 기본 off(작업 관리자처럼 프로세스 계층만).
     pub show_threads: bool,
     /// 우리가 모르는 키 원문(섹션 → "키=값" 목록) — 왕복 보존용.
@@ -92,7 +92,7 @@ impl Default for Settings {
             topn: 5,
             list_refresh_ms: 2_000,
             hide_pseudo: true,
-            view_flat: false,
+            view_mode: "grouped".to_string(),
             show_threads: false,
             unknown: BTreeMap::new(),
         }
@@ -198,7 +198,15 @@ impl Settings {
             ("ui", "hide_pseudo") => {
                 self.hide_pseudo = parse_bool(value).unwrap_or(self.hide_pseudo)
             }
-            ("ui", "view_flat") => self.view_flat = parse_bool(value).unwrap_or(self.view_flat),
+            ("ui", "view_mode") => self.view_mode = value.to_string(),
+            // 구 키 — 1회 마이그레이션(true였으면 평면, false였으면 트리)
+            ("ui", "view_flat") => {
+                self.view_mode = match parse_bool(value) {
+                    Some(true) => "flat".to_string(),
+                    Some(false) => "tree".to_string(),
+                    None => self.view_mode.clone(),
+                }
+            }
             ("ui", "show_threads") => {
                 self.show_threads = parse_bool(value).unwrap_or(self.show_threads)
             }
@@ -263,7 +271,7 @@ impl Settings {
         out.push_str(&format!("topn = {}\n", self.topn));
         out.push_str(&format!("list_refresh_ms = {}\n", self.list_refresh_ms));
         out.push_str(&format!("hide_pseudo = {}\n", b(self.hide_pseudo)));
-        out.push_str(&format!("view_flat = {}\n", b(self.view_flat)));
+        out.push_str(&format!("view_mode = {}\n", self.view_mode));
         out.push_str(&format!("show_threads = {}\n", b(self.show_threads)));
         self.push_unknown(&mut out, "ui");
 
@@ -306,7 +314,10 @@ mod tests {
         assert_eq!((s.list_refresh_ms, s.topn), (2_000, 5));
         assert!(s.auto_enabled && s.notify && s.hide_pseudo);
         // 기본 보기 = 프로세스 트리, 쓰레드는 숨김(사용자 확정 08-07)
-        assert!(!s.view_flat, "기본은 트리 보기여야 한다");
+        assert_eq!(
+            s.view_mode, "grouped",
+            "기본은 작업 관리자식 묶음 보기여야 한다"
+        );
         assert!(!s.show_threads, "쓰레드는 기본 숨김이어야 한다");
         // 안전 우선 — ①② 만 기본 on
         assert_eq!((s.areas.working_sets, s.areas.standby_low), (true, true));
@@ -335,7 +346,6 @@ view_flat = false
         assert!(!s.auto_enabled);
         assert_eq!(s.threshold_percent, 75);
         assert!(s.areas.standby_all);
-        assert!(!s.view_flat);
     }
 
     #[test]

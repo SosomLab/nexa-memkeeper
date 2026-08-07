@@ -72,7 +72,7 @@
 | `topn` | u32 | `5` | 3~10 |
 | `topn_metric` | enum | `private_ws` | `private_ws` \| `ws` \| `commit` |
 | `list_refresh_ms` | u32 | `2000` | 500~10000 — Top 5 팝업·트리 뷰 열려 있는 동안 사용량 자동 갱신 주기(사용자 확정 08-07). 설정 창·일반 그룹 노출 |
-| `view_flat` | bool | **`false`** | 메인 화면 기본 보기 = **프로세스 트리**(true = 평면 목록). 보기 메뉴에서 전환(재정정 08-07) |
+| `view_mode` | enum | **`grouped`** | `grouped`(작업 관리자식 분류·묶음, 기본) \| `tree`(PPID 계층) \| `flat`(전체 나열). 보기 메뉴에서 전환. 구 키 `view_flat`은 1회 마이그레이션(DR-14) |
 | `show_threads` | bool | `false` | 확장 시 쓰레드 행 표시 — 기본 off(작업 관리자와 동일). 보기 메뉴에서 토글 |
 | `hide_pseudo` | bool | `true` | 의사 프로세스(Memory Compression·Registry·Secure System) 숨김 — 작업 관리자와 같은 기본값(사용자 확정 08-07). 메인 화면 설정 메뉴에서 토글, 해제하면 목록에 표시(여전히 🔒 조작 불가) |
 

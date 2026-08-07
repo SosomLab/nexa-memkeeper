@@ -5,8 +5,22 @@
 //! 낄 수 없다([15 §4 정정](../../../docs/15-dev-methodology.md)). 대신 **버퍼 워킹은 경계 검사 필수** —
 //! 매 항목에서 오프셋·구조체 크기·문자열 길이를 검증하고, 어긋나면 그 지점에서 중단한다.
 
+use std::collections::HashMap;
+
 use mk_core::{ProcInfo, ThreadInfo};
+use windows::core::{BOOL, PCWSTR, PWSTR};
+use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM};
+use windows::Win32::Storage::FileSystem::{
+    GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW,
+};
+use windows::Win32::System::Threading::{
+    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+};
 use windows::Win32::System::WindowsProgramming::SYSTEM_PROCESS_INFORMATION;
+use windows::Win32::UI::WindowsAndMessaging::{
+    EnumWindows, GetWindow, GetWindowLongPtrW, GetWindowTextLengthW, GetWindowTextW,
+    GetWindowThreadProcessId, IsWindowVisible, GWL_EXSTYLE, GW_OWNER, WS_EX_TOOLWINDOW,
+};
 
 /// 각 프로세스 항목 뒤에 `NumberOfThreads`개가 이어지는 쓰레드 정보(x64 80바이트).
 /// windows crate 미노출 — NT 문서 레이아웃대로 선언하고 크기를 컴파일 타임에 고정한다.
@@ -48,11 +62,164 @@ const STATUS_INFO_LENGTH_MISMATCH: i32 = 0xC0000004u32 as i32;
 const PRIVATE_WS_OFFSET_IN_RESERVED1: usize = 0;
 
 /// 전 프로세스 열거. 실패 시 빈 Vec(호출자는 이전 목록 유지).
+/// 열거 후 **보이는 최상위 창**을 한 번 훑어 창 제목을 채운다 — 작업 관리자의 "앱" 분류 기준.
 pub fn enumerate() -> Vec<ProcInfo> {
     let Some(buf) = query_buffer() else {
         return Vec::new();
     };
-    parse(&buf)
+    let mut list = parse(&buf);
+    for p in &mut list {
+        p.display_name = friendly_name(p.pid, &p.name);
+    }
+    prune_name_cache(&list);
+    let titles = visible_window_titles();
+    for p in &mut list {
+        if let Some(t) = titles.get(&p.pid) {
+            p.window_titles = t.clone();
+        }
+    }
+    list
+}
+
+thread_local! {
+    /// PID → 표시 이름 캐시. exe 버전 정보 조회는 비싸므로 **프로세스당 한 번만** 한다
+    /// (2초마다 500개를 다시 읽으면 안 된다).
+    static NAME_CACHE: std::cell::RefCell<HashMap<u32, String>> =
+        std::cell::RefCell::new(HashMap::new());
+    /// 창 스캔 결과 수집용(EnumWindows 콜백은 상태를 못 가져가므로 잠깐 빌려 쓴다).
+    static SCAN: std::cell::RefCell<HashMap<u32, Vec<String>>> =
+        std::cell::RefCell::new(HashMap::new());
+}
+
+/// 작업 관리자가 보여주는 이름 = exe 버전 정보의 `FileDescription`. 없으면 파일명을 그대로 쓴다.
+fn friendly_name(pid: u32, fallback: &str) -> String {
+    if let Some(v) = NAME_CACHE.with(|c| c.borrow().get(&pid).cloned()) {
+        return v;
+    }
+    let name = image_path(pid)
+        .and_then(|path| file_description(&path))
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| fallback.to_string());
+    NAME_CACHE.with(|c| c.borrow_mut().insert(pid, name.clone()));
+    name
+}
+
+/// 종료된 프로세스의 캐시 항목 정리(오래 켜 둬도 캐시가 계속 자라지 않게).
+fn prune_name_cache(list: &[ProcInfo]) {
+    let alive: std::collections::HashSet<u32> = list.iter().map(|p| p.pid).collect();
+    NAME_CACHE.with(|c| c.borrow_mut().retain(|pid, _| alive.contains(pid)));
+}
+
+/// 프로세스 실행 파일 경로(권한이 없으면 None — 시스템 프로세스 등).
+fn image_path(pid: u32) -> Option<String> {
+    unsafe {
+        let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+        let mut buf = [0u16; 520];
+        let mut len = buf.len() as u32;
+        let ok =
+            QueryFullProcessImageNameW(h, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut len)
+                .is_ok();
+        let _ = CloseHandle(h);
+        ok.then(|| String::from_utf16_lossy(&buf[..len as usize]))
+    }
+}
+
+/// 파일 버전 리소스에서 `FileDescription`을 읽는다(번역 블록을 먼저 찾아 해당 언어로 조회).
+fn file_description(path: &str) -> Option<String> {
+    unsafe {
+        let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+        let size = GetFileVersionInfoSizeW(PCWSTR(wide.as_ptr()), None);
+        if size == 0 {
+            return None;
+        }
+        let mut data = vec![0u8; size as usize];
+        GetFileVersionInfoW(
+            PCWSTR(wide.as_ptr()),
+            None,
+            size,
+            data.as_mut_ptr() as *mut core::ffi::c_void,
+        )
+        .ok()?;
+
+        // 번역(언어·코드페이지) 목록의 첫 항목을 쓴다
+        let mut tr_ptr: *mut core::ffi::c_void = std::ptr::null_mut();
+        let mut tr_len = 0u32;
+        let key: Vec<u16> = "\\VarFileInfo\\Translation"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        if !VerQueryValueW(
+            data.as_ptr() as *const core::ffi::c_void,
+            PCWSTR(key.as_ptr()),
+            &mut tr_ptr,
+            &mut tr_len,
+        )
+        .as_bool()
+            || tr_len < 4
+        {
+            return None;
+        }
+        let lang = *(tr_ptr as *const u16);
+        let cp = *(tr_ptr as *const u16).add(1);
+
+        let sub = format!("\\StringFileInfo\\{lang:04x}{cp:04x}\\FileDescription");
+        let subw: Vec<u16> = sub.encode_utf16().chain(std::iter::once(0)).collect();
+        let mut val_ptr: *mut core::ffi::c_void = std::ptr::null_mut();
+        let mut val_len = 0u32;
+        if !VerQueryValueW(
+            data.as_ptr() as *const core::ffi::c_void,
+            PCWSTR(subw.as_ptr()),
+            &mut val_ptr,
+            &mut val_len,
+        )
+        .as_bool()
+            || val_len == 0
+        {
+            return None;
+        }
+        let slice = std::slice::from_raw_parts(val_ptr as *const u16, val_len as usize);
+        let text = String::from_utf16_lossy(slice);
+        Some(text.trim_end_matches('\0').to_string())
+    }
+}
+
+/// 사용자에게 **보이는** 최상위 창의 (PID → 제목). 작업 관리자가 "앱"으로 치는 것과 같은 기준:
+/// 보이고, 제목이 있고, 소유 창이 아니며, 도구 창이 아닌 것.
+fn visible_window_titles() -> HashMap<u32, Vec<String>> {
+    unsafe {
+        SCAN.with(|m| m.borrow_mut().clear());
+        let _ = EnumWindows(Some(scan_proc), LPARAM(0));
+        SCAN.with(|m| m.borrow().clone())
+    }
+}
+
+unsafe extern "system" fn scan_proc(hwnd: HWND, _: LPARAM) -> BOOL {
+    if !IsWindowVisible(hwnd).as_bool() {
+        return true.into();
+    }
+    // 소유 창(대화상자 등)·도구 창은 앱 대표 창이 아니다
+    if !GetWindow(hwnd, GW_OWNER).unwrap_or_default().is_invalid() {
+        return true.into();
+    }
+    if GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_TOOLWINDOW.0 != 0 {
+        return true.into();
+    }
+    let len = GetWindowTextLengthW(hwnd);
+    if len <= 0 {
+        return true.into();
+    }
+    let mut buf = vec![0u16; len as usize + 1];
+    let n = GetWindowTextW(hwnd, &mut buf);
+    if n <= 0 {
+        return true.into();
+    }
+    let title = String::from_utf16_lossy(&buf[..n as usize]);
+    let mut pid = 0u32;
+    GetWindowThreadProcessId(hwnd, Some(&mut pid));
+    if pid != 0 {
+        SCAN.with(|m| m.borrow_mut().entry(pid).or_default().push(title));
+    }
+    true.into()
 }
 
 /// 버퍼 확보 — 프로세스 수가 변해 크기가 어긋나면(STATUS_INFO_LENGTH_MISMATCH) 확장 재시도.
@@ -102,6 +269,9 @@ fn parse(buf: &[u8]) -> Vec<ProcInfo> {
         let name = image_name(p, pid);
         out.push(ProcInfo {
             pid,
+            session_id: p.SessionId,
+            display_name: String::new(), // 아래에서 버전 정보로 채운다
+            window_titles: Vec::new(),
             // Reserved2 = InheritedFromUniqueProcessId(부모 PID) — crate가 이름을 가린 필드
             ppid: p.Reserved2 as usize as u32,
             name,

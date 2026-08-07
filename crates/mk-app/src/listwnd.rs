@@ -88,6 +88,7 @@ const ID_EXPAND_ALL: usize = 252;
 const ID_COLLAPSE_ALL: usize = 253;
 const ID_CLEAR_FILTER: usize = 254;
 const ID_SHOW_THREADS: usize = 255;
+const ID_VIEW_GROUPED: usize = 256;
 const ID_URL_HOME: usize = 241;
 const ID_URL_REPO: usize = 242;
 const ID_URL_APP: usize = 243;
@@ -126,8 +127,8 @@ struct ListState {
     sort_asc: bool,
     /// 의사 프로세스(Memory Compression 등) 숨김 — 기본 on(사용자 확정 08-07).
     hide_pseudo: bool,
-    /// 평면 목록(계층 없음) — **기본값**. 트리는 부모가 접히면 자식을 못 찾는다(08-07 사용자 사례).
-    flat: bool,
+    /// 보기 모드 — 0 = 묶음(작업 관리자식·기본), 1 = 트리(부모-자식), 2 = 평면.
+    view: u8,
     /// 쓰레드 행 표시 — **기본 off**(사용자 확정 08-07). 작업 관리자처럼 프로세스 계층만 본다.
     show_threads: bool,
     /// 이름 검색어 — 창에 그냥 타이핑하면 채워진다(Esc = 지움). 비어 있지 않으면 항상 평면 표시.
@@ -281,13 +282,14 @@ unsafe fn build_menu(hwnd: HWND) -> HMENU {
     let _ = AppendMenuW(bar, MF_POPUP, mem.0 as usize, tw!("Memory(&M)"));
 
     let view = CreatePopupMenu().unwrap_or_default();
+    let _ = AppendMenuW(view, MF_STRING, ID_VIEW_GROUPED, tw!("Grouped by app(&G)"));
+    let _ = AppendMenuW(view, MF_STRING, ID_VIEW_TREE, tw!("Process Tree(&T)"));
     let _ = AppendMenuW(
         view,
         MF_STRING,
         ID_VIEW_FLAT,
         tw!("Flat List(&L) — show all"),
     );
-    let _ = AppendMenuW(view, MF_STRING, ID_VIEW_TREE, tw!("Process Tree(&T)"));
     let _ = AppendMenuW(view, MF_SEPARATOR, 0, None);
     let _ = AppendMenuW(view, MF_STRING, ID_SHOW_THREADS, tw!("Show threads(&H)"));
     let _ = AppendMenuW(view, MF_SEPARATOR, 0, None);
@@ -360,7 +362,7 @@ unsafe fn sync_menu_checks(
     menu: HMENU,
     refresh_ms: u32,
     hide_pseudo: bool,
-    flat: bool,
+    view: u8,
     show_threads: bool,
 ) {
     CheckMenuItem(
@@ -373,16 +375,18 @@ unsafe fn sync_menu_checks(
                 MF_UNCHECKED.0
             },
     );
-    CheckMenuItem(
-        menu,
-        ID_VIEW_FLAT as u32,
-        MF_BYCOMMAND.0 | if flat { MF_CHECKED.0 } else { MF_UNCHECKED.0 },
-    );
-    CheckMenuItem(
-        menu,
-        ID_VIEW_TREE as u32,
-        MF_BYCOMMAND.0 | if flat { MF_UNCHECKED.0 } else { MF_CHECKED.0 },
-    );
+    for (id, mode) in [(ID_VIEW_GROUPED, 0u8), (ID_VIEW_TREE, 1), (ID_VIEW_FLAT, 2)] {
+        CheckMenuItem(
+            menu,
+            id as u32,
+            MF_BYCOMMAND.0
+                | if view == mode {
+                    MF_CHECKED.0
+                } else {
+                    MF_UNCHECKED.0
+                },
+        );
+    }
     let on = autorun_enabled();
     CheckMenuItem(
         menu,
@@ -432,11 +436,15 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                     rows: Vec::new(),
                     expanded: HashSet::new(),
                     top: 0,
-                    sel: (0, 0),
+                    sel: (u32::MAX, u32::MAX), // 분류 행(pid 0)과 겹치지 않는 "선택 없음" 값
                     sort_key: SortKey::PrivateWs,
                     sort_asc: false, // 점유 큰 순 = 기본
                     hide_pseudo: cfg.hide_pseudo,
-                    flat: cfg.view_flat,
+                    view: match cfg.view_mode.as_str() {
+                        "tree" => 1,
+                        "flat" => 2,
+                        _ => 0,
+                    },
                     show_threads: cfg.show_threads,
                     filter: String::new(),
                     refresh_ms: cfg.list_refresh_ms,
@@ -449,7 +457,7 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
             });
             reload();
             with_state(|st| {
-                if !st.flat {
+                if st.view == 1 {
                     expand_all_parents(st);
                     rebuild(st);
                 }
@@ -458,7 +466,11 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                 menu,
                 cfg.list_refresh_ms,
                 cfg.hide_pseudo,
-                cfg.view_flat,
+                match cfg.view_mode.as_str() {
+                    "tree" => 1,
+                    "flat" => 2,
+                    _ => 0,
+                },
                 cfg.show_threads,
             );
             create_search(hwnd, make_font(-12, 400));
@@ -564,10 +576,13 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
             } else {
                 let toggled = with_state_ret(|st| {
                     let Some(r) = row_at(st, y).cloned() else {
-                        st.sel = (0, 0);
+                        st.sel = (u32::MAX, u32::MAX);
                         return false;
                     };
-                    st.sel = (r.pid, r.tid);
+                    // 분류 머리글(앱/백그라운드/Windows)은 조작 대상이 아니라 선택하지 않는다
+                    if r.kind != RowKind::Category {
+                        st.sel = (r.pid, r.tid);
+                    }
                     // 좌측 확장 버튼 영역 클릭 = 펼침/접힘
                     if r.expandable && x >= expander_x(r.depth) && x < expander_x(r.depth) + EXP_W {
                         if !st.expanded.insert(r.pid) {
@@ -665,15 +680,19 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
                     st.menu,
                     st.refresh_ms,
                     st.hide_pseudo,
-                    st.flat,
+                    st.view,
                     st.show_threads,
                 )
             });
         }
-        ID_VIEW_FLAT | ID_VIEW_TREE => {
+        ID_VIEW_GROUPED | ID_VIEW_TREE | ID_VIEW_FLAT => {
             with_state(|st| {
-                st.flat = id == ID_VIEW_FLAT;
-                if !st.flat && st.expanded.is_empty() {
+                st.view = match id {
+                    ID_VIEW_GROUPED => 0,
+                    ID_VIEW_TREE => 1,
+                    _ => 2,
+                };
+                if st.view == 1 && st.expanded.is_empty() {
                     expand_all_parents(st); // 트리로 바꾸면 기본은 펼친 상태
                 }
                 rebuild(st);
@@ -681,7 +700,7 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
                     st.menu,
                     st.refresh_ms,
                     st.hide_pseudo,
-                    st.flat,
+                    st.view,
                     st.show_threads,
                 );
             });
@@ -713,7 +732,7 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
                     st.menu,
                     st.refresh_ms,
                     st.hide_pseudo,
-                    st.flat,
+                    st.view,
                     st.show_threads,
                 );
                 rebuild(st);
@@ -729,7 +748,7 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
                     st.menu,
                     st.refresh_ms,
                     st.hide_pseudo,
-                    st.flat,
+                    st.view,
                     st.show_threads,
                 );
             });
@@ -745,7 +764,7 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
             };
             with_state(|st| {
                 st.refresh_ms = ms;
-                sync_menu_checks(st.menu, ms, st.hide_pseudo, st.flat, st.show_threads);
+                sync_menu_checks(st.menu, ms, st.hide_pseudo, st.view, st.show_threads);
             });
             SetTimer(Some(hwnd), TIMER_REFRESH, ms, None);
         }
@@ -1003,7 +1022,13 @@ fn reload() {
     let all = crate::procs::enumerate();
     with_state(|st| {
         let visible = mk_core::filter_pseudo(all, st.hide_pseudo);
-        st.procs = mk_core::filter_procs(visible, &st.filter);
+        // 트리 보기에서는 **일치 항목 + 조상**을 남겨 계층이 보이게 한다(사용자 확정 08-07).
+        // 다른 보기에서는 일치 항목만 평면으로.
+        st.procs = match st.view {
+            1 => mk_core::filter_tree(visible, &st.filter), // 트리: 일치 + 조상
+            0 => mk_core::filter_grouped(visible, &st.filter), // 묶음: 창 제목까지, 구조 유지
+            _ => mk_core::filter_procs(visible, &st.filter),
+        };
         rebuild(st);
     });
 }
@@ -1011,8 +1036,20 @@ fn reload() {
 /// 수집본은 그대로 두고 화면 행만 다시 만든다(정렬·펼침·보기 모드 변경 시).
 /// 검색 중에는 결과가 부모 아래 숨지 않도록 **항상 평면**으로 그린다.
 fn rebuild(st: &mut ListState) {
-    st.rows = if st.flat || !st.filter.is_empty() {
-        mk_core::build_rows_flat(
+    // 검색 중 트리 보기는 계층을 유지한 채(조상 포함) 모두 펼쳐 보여준다.
+    if st.view == 1 && !st.filter.is_empty() {
+        expand_all_parents(st);
+    }
+    st.rows = if st.view == 0 {
+        mk_core::build_grouped_rows(
+            &st.procs,
+            st.sort_key,
+            st.sort_asc,
+            &st.expanded,
+            st.show_threads,
+        )
+    } else if st.view == 1 {
+        mk_core::build_rows(
             &st.procs,
             st.sort_key,
             st.sort_asc,
@@ -1020,7 +1057,7 @@ fn rebuild(st: &mut ListState) {
             st.show_threads,
         )
     } else {
-        mk_core::build_rows(
+        mk_core::build_rows_flat(
             &st.procs,
             st.sort_key,
             st.sort_asc,
@@ -1349,9 +1386,12 @@ unsafe fn paint(hwnd: HWND) {
                 right: w,
                 bottom: top + ROW_H,
             };
-            let selected = st.sel == (p.pid, p.tid);
+            let is_category = p.kind == RowKind::Category;
+            let selected = !is_category && st.sel == (p.pid, p.tid);
             if selected {
                 fill(mem, &rc, hi);
+            } else if is_category {
+                fill(mem, &rc, face); // 구획 머리글 — 선택색이 아니라 헤더색
             } else if (st.top + i) % 2 == 1 {
                 fill(mem, &rc, alt);
             }
@@ -1395,23 +1435,25 @@ unsafe fn paint(hwnd: HWND) {
                 } else {
                     p.label.clone()
                 },
-                if is_thread {
-                    String::new()
+                if is_thread || matches!(p.kind, RowKind::Category | RowKind::Group) {
+                    String::new() // 분류·묶음 행에는 PID가 없다(작업 관리자와 동일)
                 } else {
                     p.pid.to_string()
                 },
-                if is_thread {
-                    String::new()
+                if is_thread || p.kind == RowKind::Window {
+                    String::new() // 창 행은 프로세스의 일부 — 메모리를 중복 표기하지 않는다
                 } else {
                     mk_core::fmt_size(p.private_ws)
                 },
-                if is_thread {
+                if is_thread || p.kind == RowKind::Window {
                     String::new()
                 } else {
                     mk_core::fmt_size(p.ws)
                 },
                 if is_thread {
                     format!("{} {}", p.threads, tr("switches"))
+                } else if matches!(p.kind, RowKind::Category | RowKind::Window) {
+                    String::new()
                 } else {
                     p.threads.to_string()
                 },
@@ -1459,6 +1501,7 @@ unsafe fn paint(hwnd: HWND) {
         );
         let sel_txt = st
             .selected()
+            .filter(|r| r.kind != RowKind::Category)
             .map(|r| {
                 if r.kind == RowKind::Thread {
                     format!(
@@ -1483,20 +1526,13 @@ unsafe fn paint(hwnd: HWND) {
                 st.procs.len(),
                 tr("matches (Esc to clear)")
             )
-        } else if st.flat {
-            format!(
-                "{} {} · {}",
-                st.procs.len(),
-                tr("processes"),
-                tr("flat list")
-            )
         } else {
-            format!(
-                "{} {} · {}",
-                st.procs.len(),
-                tr("processes"),
-                tr("tree view")
-            )
+            let mode_name = match st.view {
+                1 => tr("tree view"),
+                2 => tr("flat list"),
+                _ => tr("grouped by app"),
+            };
+            format!("{} {} · {}", st.procs.len(), tr("processes"), mode_name)
         };
         text(
             mem,

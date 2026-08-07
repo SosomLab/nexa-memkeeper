@@ -47,7 +47,6 @@ const ID_A_COMBINE: i32 = 1015;
 const ID_POLL: i32 = 1020;
 const ID_NOTIFY: i32 = 1021;
 const ID_HIDE_PSEUDO: i32 = 1022;
-const ID_VIEW_FLAT: i32 = 1023;
 const ID_REFRESH_MS: i32 = 1024;
 const ID_TOPN: i32 = 1025;
 const ID_HOTKEY: i32 = 1026;
@@ -600,15 +599,6 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
         200,
         font,
     );
-    checkbox(
-        hwnd,
-        tw!("List defaults to flat (not tree)"),
-        ID_VIEW_FLAT,
-        x + 14,
-        458,
-        300,
-        font,
-    );
     // 전역 핫키(M4-2) — 공용 컨트롤의 hotkey 클래스가 조합 입력·표시를 대신 처리한다.
     label(
         hwnd,
@@ -663,7 +653,6 @@ unsafe fn load_into_ui(hwnd: HWND, s: &Settings) {
     let _ = SetDlgItemInt(hwnd, ID_TOPN, s.topn, false);
     set_check(hwnd, ID_NOTIFY, s.notify);
     set_check(hwnd, ID_HIDE_PSEUDO, s.hide_pseudo);
-    set_check(hwnd, ID_VIEW_FLAT, s.view_flat);
     set_hotkey(hwnd, ID_HOTKEY, &s.hotkey_clean);
     set_lang_combo(hwnd, ID_LANG, &s.lang);
 }
@@ -687,7 +676,6 @@ unsafe fn save_from_ui(hwnd: HWND) -> bool {
     s.topn = GetDlgItemInt(hwnd, ID_TOPN, None, false);
     s.notify = get_check(hwnd, ID_NOTIFY);
     s.hide_pseudo = get_check(hwnd, ID_HIDE_PSEUDO);
-    s.view_flat = get_check(hwnd, ID_VIEW_FLAT);
     s.hotkey_clean = get_hotkey(hwnd, ID_HOTKEY);
     let prev_lang = s.lang.clone();
     s.lang = get_lang_combo(hwnd, ID_LANG);
