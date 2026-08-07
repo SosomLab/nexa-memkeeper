@@ -4,8 +4,7 @@
 > 구 키(`poll_secs`·`cooldown_secs`·`interval_mins`)는 읽을 때 자동 환산되고 저장 시 새 키로 대체된다(1회 마이그레이션).
 >
 > **구현 상태(08-07, M4)**: 파싱·검증(mk-core `settings.rs`)·파일 I/O(mk-app `config.rs`)·설정 창 완료.
-> **08-07(M5-1)**: `[auto] low_memory_event`·`[areas] combine`(⑥)까지 구현 완료.
-> 미구현: `[watch]`(X-1 후보), `[exclude]`. UI에 없는 키도 파일에 쓰면 보존되며, 구현 시 그대로 살아난다.
+> **08-08**: `[watch]`(X-1)·`[auto] suppress_fullscreen`(X-2)까지 구현 완료. 미구현: `[exclude]`. UI에 없는 키도 파일에 쓰면 보존되며, 구현 시 그대로 살아난다.
 
 > [05 §4](05-requirements.md) 설정 스펙의 구현 상세: 키 이름·형·기본값·범위·UI 배치·적용 시점.
 > 저장 위치: exe 옆 `data\settings.ini`(포터블), 쓰기 불가 시 `%LOCALAPPDATA%\NexaMemKeeper\`(FR-5).
@@ -58,12 +57,12 @@
 
 - **보호 고정 목록([05 §4-4](05-requirements.md))은 코드 내장 — ini로 해제 불가**(안전 규율 15 §4).
 
-## 5. `[watch]` — 프로세스 워치리스트 자동 트림 (후보 X-1 채택 시)
+## 5. `[watch]` — 프로세스 워치리스트 자동 트림 (X-1, 08-08 구현)
 
 | 키 | 형 | 기본 | 비고 |
 | --- | --- | --- | --- |
-| `enabled` | bool | `false` | |
-| `entries` | str | `""` | `이름:임계MB` 목록(예 `chrome.exe:1500;msedge.exe:1200`) — 초과 시 해당 프로세스만 트림 |
+| `enabled` | bool | `false` | 꺼져 있으면 셸이 **열거조차 하지 않는다**(유휴 비용 0) |
+| `entries` | str | `""` | `이름:임계MB` 목록(예 `chrome.exe:1500;msedge.exe:1200`) — **프라이빗 워킹셋**이 임계를 넘으면 그 프로세스만 트림. 임계는 200MB~64GB로 클램프, 형식이 틀린 항목은 버린다. 같은 프로세스는 `auto.cooldown_ms` 간격을 지키고, 보호 프로세스는 이름이 맞아도 제외. 알림은 띄우지 않는다(조용한 표적 트림) |
 
 ## 6. `[ui]` — 표시
 

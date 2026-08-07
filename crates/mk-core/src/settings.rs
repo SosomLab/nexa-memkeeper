@@ -68,6 +68,12 @@ pub struct Settings {
     /// 정리에는 순간 멈춤이라는 대가가 있고([21](../../docs/21-effectiveness-measurement.md)),
     /// 하필 그 순간이 프레임이 중요한 때다. 수동 정리·핫키는 그대로 동작한다.
     pub suppress_fullscreen: bool,
+    // [watch] — 지정 프로세스만 표적 트림(X-1)
+    /// 워치리스트 사용 여부. 꺼져 있으면 셸은 열거 자체를 하지 않는다(유휴 비용 0).
+    pub watch_enabled: bool,
+    /// `(실행 파일명 소문자, 임계 MB)` — 프라이빗 워킹셋이 임계를 넘으면 **그 프로세스만** 트림.
+    /// 전역 정리보다 표적이 좁아 다른 앱의 캐시를 건드리지 않는다.
+    pub watch: Vec<(String, u32)>,
     // [areas]
     pub areas: Areas,
     // [ui]
@@ -106,6 +112,8 @@ impl Default for Settings {
             interval_ms: 0,
             low_memory_event: true,
             suppress_fullscreen: true,
+            watch_enabled: false,
+            watch: Vec::new(),
             areas: Areas::default(),
             topn: 5,
             list_refresh_ms: 2_000,
@@ -208,6 +216,22 @@ impl Settings {
             ("auto", "low_memory_event") => {
                 self.low_memory_event = parse_bool(value).unwrap_or(self.low_memory_event)
             }
+            ("watch", "enabled") => {
+                self.watch_enabled = parse_bool(value).unwrap_or(self.watch_enabled)
+            }
+            ("watch", "entries") => {
+                // `chrome.exe:1500;msedge.exe:1200` — 이름과 임계(MB)를 쌍으로 읽는다.
+                // 형식이 틀린 항목은 조용히 버린다(파일 한 줄 때문에 기능 전체가 죽지 않게).
+                self.watch = value
+                    .split(';')
+                    .filter_map(|item| {
+                        let (name, mb) = item.split_once(':')?;
+                        let name = name.trim().to_ascii_lowercase();
+                        let mb = mb.trim().parse::<u32>().ok()?;
+                        (!name.is_empty()).then_some((name, mb))
+                    })
+                    .collect();
+            }
             ("areas", "working_sets") => {
                 self.areas.working_sets = parse_bool(value).unwrap_or(self.areas.working_sets)
             }
@@ -277,6 +301,11 @@ impl Settings {
         }
         self.topn = clamp(self.topn, 3, 10);
         self.list_refresh_ms = clamp(self.list_refresh_ms, 500, 10_000);
+        // 임계가 너무 낮으면 상시 트림이 되어 오히려 손해다(docs/21) — 하한 200MB.
+        self.watch.retain(|(n, _)| !n.is_empty());
+        for (_, mb) in &mut self.watch {
+            *mb = clamp(*mb, 200, 64_000);
+        }
         // 창 크기가 0에 가깝게 저장되면 복원했을 때 쓸 수 없는 창이 된다 — 최소치를 보장한다.
         if self.win_w > 0 || self.win_h > 0 {
             self.win_w = self.win_w.max(420);
@@ -323,6 +352,18 @@ impl Settings {
         ));
         self.push_unknown(&mut out, "auto");
 
+        if self.watch_enabled || !self.watch.is_empty() {
+            out.push_str("\n[watch]\n");
+            out.push_str(&format!("enabled = {}\n", b(self.watch_enabled)));
+            let entries: Vec<String> = self
+                .watch
+                .iter()
+                .map(|(n, mb)| format!("{n}:{mb}"))
+                .collect();
+            out.push_str(&format!("entries = {}\n", entries.join(";")));
+            self.push_unknown(&mut out, "watch");
+        }
+
         out.push_str("\n[areas]\n");
         out.push_str(&format!("working_sets = {}\n", b(self.areas.working_sets)));
         out.push_str(&format!("standby_low = {}\n", b(self.areas.standby_low)));
@@ -354,7 +395,7 @@ impl Settings {
 
         // 우리가 모르는 섹션 전체도 보존
         for (sec, lines) in &self.unknown {
-            if matches!(sec.as_str(), "general" | "auto" | "areas" | "ui") {
+            if matches!(sec.as_str(), "general" | "auto" | "watch" | "areas" | "ui") {
                 continue;
             }
             out.push_str(&format!("\n[{sec}]\n"));

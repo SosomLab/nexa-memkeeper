@@ -63,6 +63,15 @@ const PRIVATE_WS_OFFSET_IN_RESERVED1: usize = 0;
 
 /// 전 프로세스 열거. 실패 시 빈 Vec(호출자는 이전 목록 유지).
 /// 열거 후 **보이는 최상위 창**을 한 번 훑어 창 제목을 채운다 — 작업 관리자의 "앱" 분류 기준.
+/// 이름·PID·메모리만 있는 가벼운 열거(워치리스트 X-1용).
+///
+/// `enumerate()`는 창 스캔(`EnumWindows`)과 버전 리소스 조회까지 한다 — 목록 창에는 필요하지만,
+/// **상주 셸이 5초마다 돌리기에는 과하다**. 워치리스트는 이름과 프라이빗 워킹셋만 보므로
+/// 시스템 콜 1회로 끝낸다.
+pub fn enumerate_basic() -> Vec<ProcInfo> {
+    query_buffer().map(|buf| parse(&buf)).unwrap_or_default()
+}
+
 pub fn enumerate() -> Vec<ProcInfo> {
     let Some(buf) = query_buffer() else {
         return Vec::new();

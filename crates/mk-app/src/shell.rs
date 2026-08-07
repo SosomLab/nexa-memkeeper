@@ -83,6 +83,9 @@ thread_local! {
     static LAST_CLEAN: Cell<Option<(Instant, u32)>> = const { Cell::new(None) };
     /// 전역 핫키 등록 여부(M4-2) — 재설정 전 해제해야 하므로 상태를 들고 있는다.
     static HOTKEY_ON: Cell<bool> = const { Cell::new(false) };
+    /// 워치리스트로 트림한 시각(PID → 시각) — 같은 프로세스를 연달아 트림하지 않기 위한 쿨다운(X-1).
+    static WATCH_LAST: std::cell::RefCell<std::collections::HashMap<u32, Instant>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
     /// 저메모리 알림 핸들(M5-1) — 한 번 만들어 두고 폴링 때마다 상태만 물어본다.
     /// 대기 스레드를 쓰지 않는 이유: 스레드 하나가 유휴 예산(DR-8)을 갉아먹고, 이미 도는
     /// 폴링 타이머에 질의 1콜을 얹는 편이 싸다(질의는 커널 플래그 읽기 수준).
@@ -142,6 +145,7 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
             } else {
                 tray_update(hwnd);
                 trim_if_over_budget(); // 예산을 넘으면 스스로 반납(NFR-3·DR-8)
+                watch_trim_if_due(); // 워치리스트 표적 트림(X-1 — 꺼져 있으면 즉시 반환)
                 auto_clean_if_due(hwnd);
             }
             LRESULT(0)
@@ -369,6 +373,49 @@ unsafe fn trim_if_over_budget() {
 
 /// 유휴 워킹셋 예산(DR-8) — 이 값을 넘으면 스스로 반납한다.
 const BUDGET_RSS: usize = 5 * 1024 * 1024;
+
+/// 워치리스트 표적 트림(X-1) — 지정한 프로세스가 임계를 넘으면 **그 프로세스만** 트림한다.
+///
+/// 전역 정리와 달리 다른 앱의 캐시를 건드리지 않아 체감 손해가 작다(docs/21의 교훈).
+/// 꺼져 있으면 **열거조차 하지 않는다** — 유휴 비용 0. 켠 경우에도 열거는 시스템 콜 1회다.
+/// 같은 프로세스를 연달아 트림하지 않도록 자동 정리와 **같은 쿨다운**을 프로세스별로 적용한다.
+unsafe fn watch_trim_if_due() {
+    let (enabled, watch, cooldown) = SETTINGS.with(|c| {
+        let s = c.borrow();
+        (s.watch_enabled, s.watch.clone(), s.cooldown_ms as u64)
+    });
+    if !enabled || watch.is_empty() {
+        return;
+    }
+    let procs = crate::procs::enumerate_basic();
+    for pid in mk_core::watch_targets(&procs, &watch) {
+        let due = WATCH_LAST.with(|m| {
+            m.borrow()
+                .get(&pid)
+                .map(|t| t.elapsed().as_millis() as u64 >= cooldown)
+                .unwrap_or(true)
+        });
+        if !due {
+            continue;
+        }
+        WATCH_LAST.with(|m| m.borrow_mut().insert(pid, Instant::now()));
+        spawn_trim(pid);
+    }
+    // 종료된 프로세스의 기록은 버린다(오래 켜 둬도 표가 계속 자라지 않게)
+    let alive: std::collections::HashSet<u32> = procs.iter().map(|p| p.pid).collect();
+    WATCH_LAST.with(|m| m.borrow_mut().retain(|pid, _| alive.contains(pid)));
+}
+
+/// 프로세스 1개 트림 — 상태 변경은 워커가 한다(DR-7). 결과는 알리지 않는다(조용한 표적 트림).
+fn spawn_trim(pid: u32) {
+    std::thread::spawn(move || {
+        if let Ok(exe) = std::env::current_exe() {
+            let _ = std::process::Command::new(exe)
+                .args(["--worker", "trim", &pid.to_string()])
+                .status();
+        }
+    });
+}
 
 unsafe fn auto_clean_if_due(hwnd: HWND) {
     if CLEAN_BUSY.get() {

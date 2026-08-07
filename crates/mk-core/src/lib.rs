@@ -826,6 +826,30 @@ pub fn descendants(procs: &[ProcInfo], pid: u32) -> Vec<u32> {
     out
 }
 
+/// 워치리스트 표적(X-1) — 임계를 넘긴 프로세스의 PID.
+///
+/// 전역 정리는 모든 프로세스의 캐시를 함께 걷어내지만, 실제로 문제가 되는 건 대개 **한두 개**다
+/// (브라우저·IDE의 비대화). 이름과 임계를 지정해 **그 프로세스만** 트림하면 다른 앱의 체감을
+/// 건드리지 않는다. 기준은 프라이빗 워킹셋 — 공유 페이지를 중복으로 세지 않는다(docs/19 §2-2).
+///
+/// 보호 목록은 여기서도 지킨다: 시스템 필수 프로세스는 이름이 일치해도 대상에서 뺀다.
+pub fn watch_targets(procs: &[ProcInfo], watch: &[(String, u32)]) -> Vec<u32> {
+    if watch.is_empty() {
+        return Vec::new();
+    }
+    procs
+        .iter()
+        .filter(|p| !is_protected(&p.name))
+        .filter(|p| {
+            let name = p.name.to_ascii_lowercase();
+            watch
+                .iter()
+                .any(|(n, mb)| *n == name && p.private_ws > (*mb as u64) * 1024 * 1024)
+        })
+        .map(|p| p.pid)
+        .collect()
+}
+
 /// 점유 상위 N개 — `private_ws` 내림차순, 동률은 PID 오름차순(표시 안정성).
 pub fn top_n(mut procs: Vec<ProcInfo>, n: usize) -> Vec<ProcInfo> {
     procs.sort_by(|a, b| b.private_ws.cmp(&a.private_ws).then(a.pid.cmp(&b.pid)));
@@ -1137,6 +1161,26 @@ mod tests {
             window_titles: vec![title.to_string()],
             ..p(pid, name, 100)
         }
+    }
+
+    #[test]
+    fn watch_targets_pick_only_over_threshold() {
+        // X-1: 이름이 맞고 **임계를 넘긴** 것만. 보호 프로세스는 이름이 맞아도 제외한다.
+        let mut procs = vec![
+            p(10, "chrome.exe", 2_000 * 1024 * 1024),
+            p(11, "chrome.exe", 500 * 1024 * 1024),
+            p(12, "code.exe", 3_000 * 1024 * 1024),
+        ];
+        procs.push(p(13, "csrss.exe", 9_000 * 1024 * 1024));
+        let watch = vec![
+            ("chrome.exe".to_string(), 1_500),
+            ("csrss.exe".to_string(), 100),
+        ];
+        assert_eq!(watch_targets(&procs, &watch), vec![10]);
+        assert!(
+            watch_targets(&procs, &[]).is_empty(),
+            "빈 목록이면 아무것도 안 한다"
+        );
     }
 
     #[test]
