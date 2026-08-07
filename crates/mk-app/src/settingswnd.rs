@@ -295,6 +295,11 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
 unsafe fn build_ui(hwnd: HWND, font: HFONT) {
     // x = 좌측 여백, gw = 그룹 폭(좌우 여백 동일하게 — 08-07 QA에서 우측이 좁아 보였다)
     let (x, gw) = (14, W - 28);
+    // 라벨/입력 칸 규격 — 모든 그룹이 같은 열에 정렬된다. 라벨은 "최소 간격 (ms, 60000~1800000)"
+    // 같은 가장 긴 문구가 **한 줄에 들어가는 폭**이어야 한다(08-07 QA: 2줄로 접혀 보였다).
+    const LBL_W: i32 = 218;
+    const NUM_X: i32 = 232;
+    const NUM_W: i32 = 96;
     // ── 자동 정리
     group(hwnd, w!("자동 정리"), x, 10, gw, 128, font);
     checkbox(
@@ -306,19 +311,19 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
         gw - 30,
         font,
     );
-    label(hwnd, w!("임계값 (%, 50~95)"), x + 14, 60, 170, font);
-    number(hwnd, ID_THRESHOLD, x + 200, 57, 70, font);
+    label(hwnd, w!("임계값 (%, 50~95)"), x + 14, 60, LBL_W, font);
+    number(hwnd, ID_THRESHOLD, x + NUM_X, 57, NUM_W, font);
     label(
         hwnd,
         w!("최소 간격 (ms, 60000~1800000)"),
         x + 14,
         86,
-        170,
+        LBL_W,
         font,
     );
-    number(hwnd, ID_COOLDOWN, x + 200, 83, 70, font);
-    label(hwnd, w!("주기 정리 (ms, 0=끔)"), x + 14, 112, 170, font);
-    number(hwnd, ID_INTERVAL, x + 200, 109, 70, font);
+    number(hwnd, ID_COOLDOWN, x + NUM_X, 83, NUM_W, font);
+    label(hwnd, w!("주기 정리 (ms, 0=끔)"), x + 14, 112, LBL_W, font);
+    number(hwnd, ID_INTERVAL, x + NUM_X, 109, NUM_W, font);
 
     // ── 정리 영역
     group(hwnd, w!("정리 영역"), x, 148, gw, 178, font);
@@ -392,21 +397,21 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
         w!("관찰 주기 (ms, 2000~30000)"),
         x + 14,
         360,
-        170,
+        LBL_W,
         font,
     );
-    number(hwnd, ID_POLL, x + 200, 357, 70, font);
+    number(hwnd, ID_POLL, x + NUM_X, 357, NUM_W, font);
     label(
         hwnd,
         w!("목록 갱신 (ms, 500~10000)"),
         x + 14,
         386,
-        190,
+        LBL_W,
         font,
     );
-    number(hwnd, ID_REFRESH_MS, x + 210, 383, 70, font);
-    label(hwnd, w!("Top N (3~10)"), x + 14, 412, 170, font);
-    number(hwnd, ID_TOPN, x + 200, 409, 70, font);
+    number(hwnd, ID_REFRESH_MS, x + NUM_X, 383, NUM_W, font);
+    label(hwnd, w!("Top N (3~10)"), x + 14, 412, LBL_W, font);
+    number(hwnd, ID_TOPN, x + NUM_X, 409, NUM_W, font);
     checkbox(
         hwnd,
         w!("정리 결과 알림"),
