@@ -11,38 +11,42 @@ use windows::Win32::Foundation::SIZE;
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateFontW, CreateSolidBrush,
-    DeleteDC, DeleteObject, DrawTextW, EndPaint, FillRect, GetDC, GetSysColor,
-    GetTextExtentPoint32W, InvalidateRect, ReleaseDC, SelectObject, SetBkMode, SetTextColor,
-    CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, COLOR_BTNFACE, COLOR_GRAYTEXT, COLOR_HIGHLIGHT,
-    COLOR_HIGHLIGHTTEXT, COLOR_WINDOW, COLOR_WINDOWTEXT, DEFAULT_CHARSET, DEFAULT_PITCH,
-    DRAW_TEXT_FORMAT, DT_CENTER, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_RIGHT, DT_SINGLELINE,
-    DT_VCENTER, HBRUSH, HDC, HFONT, OUT_DEFAULT_PRECIS, PAINTSTRUCT, SRCCOPY, SYS_COLOR_INDEX,
-    TRANSPARENT,
+    DeleteDC, DeleteObject, DrawTextW, EndPaint, FillRect, GetDC, GetStockObject, GetSysColor,
+    GetTextExtentPoint32W, InvalidateRect, ReleaseDC, RoundRect, SelectObject, SetBkMode,
+    SetTextColor, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, COLOR_BTNFACE, COLOR_GRAYTEXT,
+    COLOR_HIGHLIGHT, COLOR_HIGHLIGHTTEXT, COLOR_WINDOW, COLOR_WINDOWTEXT, DEFAULT_CHARSET,
+    DEFAULT_PITCH, DRAW_TEXT_FORMAT, DT_CENTER, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_RIGHT,
+    DT_SINGLELINE, DT_VCENTER, HBRUSH, HDC, HFONT, NULL_PEN, OUT_DEFAULT_PRECIS, PAINTSTRUCT,
+    SRCCOPY, SYS_COLOR_INDEX, TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Registry::{
     RegCloseKey, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW, HKEY,
     HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_SZ,
 };
-use windows::Win32::UI::Controls::SetScrollInfo;
-use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
+use windows::Win32::UI::Controls::{SetScrollInfo, WM_MOUSELEAVE};
 use windows::Win32::UI::Input::KeyboardAndMouse::VK_F5;
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
+};
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CheckMenuItem, CreateMenu, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
     DestroyMenu, DestroyWindow, DispatchMessageW, GetClientRect, GetCursorPos, GetDlgItem,
-    GetMessageW, GetScrollInfo, GetWindowTextLengthW, GetWindowTextW, KillTimer, LoadCursorW,
-    LoadIconW, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassW,
-    SendMessageW, SetForegroundWindow, SetMenu, SetTimer, SetWindowTextW, ShowWindow,
-    TrackPopupMenu, TranslateMessage, BS_FLAT, CW_USEDEFAULT, ES_AUTOHSCROLL, HMENU, IDC_ARROW,
-    IDYES, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_YESNO, MF_BYCOMMAND, MF_CHECKED,
-    MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING, MF_UNCHECKED, MSG, SB_BOTTOM, SB_LINEDOWN,
-    SB_LINEUP, SB_PAGEDOWN, SB_PAGEUP, SB_THUMBPOSITION, SB_THUMBTRACK, SB_TOP, SB_VERT,
-    SCROLLINFO, SCROLLINFO_MASK, SIF_PAGE, SIF_POS, SIF_RANGE, SIF_TRACKPOS, SW_HIDE, SW_SHOW,
+    GetMessageW, GetParent, GetScrollInfo, GetWindowLongPtrW, GetWindowTextLengthW, GetWindowTextW,
+    KillTimer, LoadCursorW, LoadIconW, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage,
+    RegisterClassW, SendMessageW, SetForegroundWindow, SetMenu, SetTimer, SetWindowLongPtrW,
+    SetWindowPos, SetWindowTextW, ShowWindow, TrackPopupMenu, TranslateMessage, CW_USEDEFAULT,
+    ES_AUTOHSCROLL, GWLP_USERDATA, HMENU, HWND_TOP, IDC_ARROW, IDYES, MB_ICONINFORMATION,
+    MB_ICONWARNING, MB_OK, MB_YESNO, MF_BYCOMMAND, MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR,
+    MF_STRING, MF_UNCHECKED, MSG, SB_BOTTOM, SB_LINEDOWN, SB_LINEUP, SB_PAGEDOWN, SB_PAGEUP,
+    SB_THUMBPOSITION, SB_THUMBTRACK, SB_TOP, SB_VERT, SCROLLINFO, SCROLLINFO_MASK, SIF_PAGE,
+    SIF_POS, SIF_RANGE, SIF_TRACKPOS, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SW_HIDE, SW_SHOW,
     SW_SHOWNORMAL, TPM_RETURNCMD, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_CHAR,
-    WM_COMMAND, WM_CREATE, WM_DESTROY, WM_KEYDOWN, WM_LBUTTONDOWN, WM_MOUSEWHEEL, WM_PAINT,
-    WM_RBUTTONUP, WM_SETFONT, WM_SIZE, WM_TIMER, WM_VSCROLL, WNDCLASSW, WS_CHILD, WS_EX_CLIENTEDGE,
-    WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    WM_COMMAND, WM_CREATE, WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP,
+    WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONUP, WM_SETFONT, WM_SIZE, WM_TIMER, WM_VSCROLL,
+    WNDCLASSW, WS_CHILD, WS_CLIPSIBLINGS, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_TABSTOP,
+    WS_VISIBLE, WS_VSCROLL,
 };
 
 const CLASS: PCWSTR = w!("NexaMemKeeperList");
@@ -54,6 +58,10 @@ const STATUS_H: i32 = 24;
 const SEARCH_H: i32 = 30;
 /// 검색 칸 오른쪽 끝에 겹쳐 놓는 지우기(✕) 버튼 크기.
 const CLEAR_W: i32 = 22;
+/// 지우기 단추 전용 창 클래스(직접 그린다 — 표준 BUTTON은 검색칸 안에서 네모나게 튄다).
+const CLEAR_CLASS: PCWSTR = w!("NexaMemKeeperClear");
+/// MDL2 ChromeClose — 검색칸 안에 얹는 가는 ✕(브라우저 탭 닫기와 같은 글리프).
+const GLYPH_CLEAR: &str = "\u{E8BB}";
 /// 대상 작업(회수·종료) 완료 통지 — 백그라운드 스레드에서 PostMessage(wParam = 성공 여부).
 const WM_ACTION_DONE: u32 = WM_APP + 1;
 /// 검색 입력·지우기 컨트롤 ID.
@@ -140,6 +148,8 @@ struct ListState {
     font_head: HFONT,
     /// 트리 디스클로저 전용 — Segoe MDL2 Assets(본문 폰트엔 PUA 글리프가 없어 tofu가 된다).
     font_glyph: HFONT,
+    /// 검색 지우기 글리프 전용(셰브론보다 조금 크게 — 같은 MDL2 서체).
+    font_clear: HFONT,
     client: RECT,
     menu: HMENU,
 }
@@ -454,6 +464,7 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                     font: make_font(-12, 400),
                     font_head: make_font(-12, 600),
                     font_glyph: make_font_face(GLYPH_SIZE, 400, w!("Segoe MDL2 Assets")),
+                    font_clear: make_font_face(-11, 400, w!("Segoe MDL2 Assets")),
                     client,
                     menu,
                 })
@@ -632,6 +643,7 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                     let _ = DeleteObject(st.font.into());
                     let _ = DeleteObject(st.font_head.into());
                     let _ = DeleteObject(st.font_glyph.into());
+                    let _ = DeleteObject(st.font_clear.into());
                     let _ = DestroyMenu(st.menu);
                 }
             });
@@ -808,7 +820,9 @@ unsafe fn create_search(hwnd: HWND, font: HFONT) {
         WS_EX_CLIENTEDGE,
         w!("EDIT"),
         w!(""),
-        WINDOW_STYLE(WS_CHILD.0 | WS_VISIBLE.0 | WS_TABSTOP.0 | ES_AUTOHSCROLL as u32),
+        WINDOW_STYLE(
+            WS_CHILD.0 | WS_VISIBLE.0 | WS_TABSTOP.0 | WS_CLIPSIBLINGS.0 | ES_AUTOHSCROLL as u32,
+        ),
         0,
         0,
         10,
@@ -844,11 +858,22 @@ unsafe fn create_search(hwnd: HWND, font: HFONT) {
             Some(LPARAM(cue.as_ptr() as isize)),
         );
     }
+    // 지우기 단추는 **직접 그리는 작은 창**이다. 표준 BUTTON은 네모난 테두리·회색 면이 그대로
+    // 보여 검색칸 안에 얹기에 어울리지 않고, 겹친 에디트와의 z-순서 때문에 클릭이 먹지 않았다
+    // (08-07 QA). 우리 클래스로 두면 모양·호버·클릭을 전부 우리가 통제한다.
+    let wc = WNDCLASSW {
+        lpszClassName: CLEAR_CLASS,
+        lpfnWndProc: Some(clear_proc),
+        hInstance: GetModuleHandleW(None).map(|h| h.into()).unwrap_or_default(),
+        hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
+        ..Default::default()
+    };
+    RegisterClassW(&wc); // 이미 등록돼 있으면 0을 돌려줄 뿐(워커 1회 실행이라 무해)
     if let Ok(b) = CreateWindowExW(
         WINDOW_EX_STYLE(0),
-        w!("BUTTON"),
-        w!("✕"),
-        WINDOW_STYLE(WS_CHILD.0 | BS_FLAT as u32), // 처음엔 숨김(입력이 있을 때만 표시)
+        CLEAR_CLASS,
+        w!(""),
+        WINDOW_STYLE(WS_CHILD.0 | WS_CLIPSIBLINGS.0), // 처음엔 숨김(입력이 있을 때만 표시)
         0,
         0,
         10,
@@ -858,12 +883,118 @@ unsafe fn create_search(hwnd: HWND, font: HFONT) {
         None,
         None,
     ) {
-        SendMessageW(
+        // 에디트 위에 얹히므로 형제 중 맨 앞에 둔다(가려지면 클릭이 에디트로 간다)
+        let _ = SetWindowPos(
             b,
-            WM_SETFONT,
-            Some(WPARAM(font.0 as usize)),
-            Some(LPARAM(1)),
+            Some(HWND_TOP),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
         );
+    }
+}
+
+/// 지우기 단추 그리기·입력 — 평소엔 글리프만, **호버·누름일 때만 둥근 회색 배경**(사용자 요청 08-07).
+unsafe extern "system" fn clear_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+    // 상태는 창에 붙여 둔다(전역 없이) — bit0 = 호버, bit1 = 누름.
+    let bits = GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+    let set_bits = |v: isize| {
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, v);
+        let _ = InvalidateRect(Some(hwnd), None, false);
+    };
+    match msg {
+        WM_ERASEBKGND => LRESULT(1), // 배경은 WM_PAINT에서 함께 그린다(깜빡임 방지)
+        WM_MOUSEMOVE => {
+            if bits & 1 == 0 {
+                // 커서가 떠날 때를 알려면 매번 다시 요청해야 한다(WM_MOUSELEAVE는 1회성)
+                let mut tme = TRACKMOUSEEVENT {
+                    cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                    dwFlags: TME_LEAVE,
+                    hwndTrack: hwnd,
+                    dwHoverTime: 0,
+                };
+                let _ = TrackMouseEvent(&mut tme);
+                set_bits(bits | 1);
+            }
+            LRESULT(0)
+        }
+        WM_MOUSELEAVE => {
+            set_bits(bits & !1);
+            LRESULT(0)
+        }
+        WM_LBUTTONDOWN => {
+            SetCapture(hwnd);
+            set_bits(bits | 2);
+            LRESULT(0)
+        }
+        WM_LBUTTONUP => {
+            let _ = ReleaseCapture();
+            set_bits(bits & !2);
+            // 누른 채 밖으로 나가 뗀 경우는 취소(표준 단추 동작)
+            let mut rc = RECT::default();
+            let _ = GetClientRect(hwnd, &mut rc);
+            let (x, y) = (lo_i16(lp), hi_i16(lp));
+            if bits & 2 != 0 && x >= 0 && y >= 0 && x < rc.right && y < rc.bottom {
+                if let Ok(parent) = GetParent(hwnd) {
+                    let _ = PostMessageW(
+                        Some(parent),
+                        WM_COMMAND,
+                        WPARAM(ID_SEARCH_CLEAR),
+                        LPARAM(hwnd.0 as isize),
+                    );
+                }
+            }
+            LRESULT(0)
+        }
+        WM_PAINT => {
+            let mut ps = PAINTSTRUCT::default();
+            let dc = BeginPaint(hwnd, &mut ps);
+            let mut rc = RECT::default();
+            let _ = GetClientRect(hwnd, &mut rc);
+            // 검색칸(흰 배경) 위에 얹혀 있으므로 평소에는 흔적이 남지 않게 같은 색으로 지운다
+            let bg = CreateSolidBrush(COLORREF(GetSysColor(COLOR_WINDOW)));
+            FillRect(dc, &rc, bg);
+            let _ = DeleteObject(bg.into());
+            if bits & 3 != 0 {
+                let shade = if bits & 2 != 0 {
+                    0x00D0D0D0
+                } else {
+                    0x00E8E8E8
+                };
+                let br = CreateSolidBrush(COLORREF(shade));
+                let old_br = SelectObject(dc, br.into());
+                let old_pen = SelectObject(dc, GetStockObject(NULL_PEN));
+                // 18px 정사각형에 반지름 6 — 원처럼 동그랗지 않고 모서리만 부드럽게(참고 이미지)
+                let _ = RoundRect(dc, rc.left, rc.top, rc.right, rc.bottom, 6, 6);
+                SelectObject(dc, old_br);
+                SelectObject(dc, old_pen);
+                let _ = DeleteObject(br.into());
+            }
+            SetBkMode(dc, TRANSPARENT);
+            SetTextColor(
+                dc,
+                COLORREF(if bits & 1 != 0 {
+                    0x0020_2020
+                } else {
+                    0x0060_6060
+                }),
+            );
+            with_state(|st| {
+                SelectObject(dc, st.font_clear.into());
+            });
+            let mut glyph: Vec<u16> = GLYPH_CLEAR.encode_utf16().collect();
+            DrawTextW(
+                dc,
+                &mut glyph,
+                &mut rc,
+                DT_CENTER | DT_VCENTER | DT_SINGLELINE,
+            );
+            let _ = EndPaint(hwnd, &ps);
+            LRESULT(0)
+        }
+        _ => DefWindowProcW(hwnd, msg, wp, lp),
     }
 }
 
@@ -875,7 +1006,10 @@ unsafe fn layout_search(hwnd: HWND) {
         let _ = MoveWindow(e, 8, y, (w - 16).max(60), SEARCH_H - 8, true);
     }
     if let Some(b) = get_ctl(hwnd, ID_SEARCH_CLEAR) {
-        let _ = MoveWindow(b, w - 8 - CLEAR_W - 2, y + 2, CLEAR_W, SEARCH_H - 12, true);
+        // 검색칸(높이 SEARCH_H-8) 안쪽에 정사각형으로 — 둥근 호버 배경이 자연스럽게 나온다
+        let side = SEARCH_H - 12;
+        let ey = y + (SEARCH_H - 8 - side) / 2;
+        let _ = MoveWindow(b, w - 8 - CLEAR_W - 4, ey, side, side, true);
     }
 }
 
