@@ -6,7 +6,7 @@
 ## 1. 이 프로젝트는
 
 **Nexa MemKeeper** = Windows **시스템 트레이 상주 초경량 메모리 최적화 도구** — 지속 관찰·회수로 여유 메모리 확보, Top 5 점유 팝업·프로세스 트리 뷰(쓰레드)·선택 종료/회수·간단 설정. **도구 자신의 점유 최소화가 정체성**(유휴 RSS ≤5MB 제안). 상세 [docs/00](docs/00-vision.md)·[docs/05](docs/05-requirements.md).
-현 단계: **M0-1 완료(08-07 5차) — 트레이 상주 셸 동작·게이트 전 항목 통과(exe 0.23MB·RSS 1.56MB·DLL 0). 사용자 실기 QA 후 0.1.0 승격.**
+현 단계: **M0·M1 완료(08-07 6차) — 트레이 셸 + 정리 엔진(트림 461건·+209MB 실측) 동작, 예산 유지(exe 0.34MB·RSS 2.20MB). 실기 QA 후 0.2.0 승격, 다음은 M2 Top 5 팝업.**
 
 - 조직: **SosomLab** · 개발자: Sangyong Bae · kiros33@gmail.com
 - 문서·git 규약은 `SosomLab/nexa-dir2`의 검증 표준을 전면 계승([docs/16](docs/16-doc-git-conventions.md)).
@@ -39,8 +39,8 @@
 
 1. 이 CLAUDE.md + [docs/STATUS.md](docs/STATUS.md) → 2. [DEVLOG](docs/DEVLOG.md) 최상단 + 최신 journal → 3. 할 일 = [docs/TODO.md](docs/TODO.md)(P-1부터 순차).
 
-## 5. 다음 단계 (2026-08-07 5차 갱신)
+## 5. 다음 단계 (2026-08-07 6차 갱신)
 
-1. **M0-2 — 사용자 실기 QA·24h 상주 확인**(실측 게이트는 통과 완료) → `release: 0.1.0 승격`(태그 push는 별도 승인).
-2. **M1 — 정리 엔진 v1(워커)**: `--worker` 정리 실행(영역 ①워킹셋 트림+②우선순위0 퍼지)·회수량 알림·승격 재시작([docs/02 M1](docs/02-roadmap.md)).
-3. 이후 M2(Top 5 팝업)~M5(배포 2채널 — DR-9) 순차.
+1. **M2 — Top 5 팝업(셸 내)**: `NtQuerySystemInformation` 1콜 열거·**2000ms 자동 갱신**(`list_refresh_ms`)·항목 트림/종료([docs/02 M2](docs/02-roadmap.md)).
+2. M1-2 — 사용자 실기 QA(트레이·정리·승격·24h) → `release: 0.2.0 승격`(태그 push는 별도 승인).
+3. 이후 M3(트리 뷰)~M5(배포 2채널 — DR-9) 순차. 기능 후보 X-1~X-7([docs/05 §5](docs/05-requirements.md))은 판단 대기.

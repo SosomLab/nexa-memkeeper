@@ -39,6 +39,11 @@ cargo build --release
 
 - 실측값은 **journal에 기록**(수치 없는 "통과" 금지 — 16 규칙 6). 마일스톤 게이트 결과는 MILESTONES에 요약.
 
+## 4-1. ⚠️ 측정 함정 (08-07 실측 교훈)
+
+- **PowerShell로 릴리스 exe의 종료 코드를 재지 마라** — 릴리스는 GUI 서브시스템(`windows_subsystem`)이라 `& $exe`가 **대기하지 않고 즉시 0을 반환**한다. 워커 종료 코드 확인은 **디버그 빌드**(콘솔 있음)로 하거나 `Start-Process -Wait` 사용. 셸의 `Command::status()`는 서브시스템과 무관하게 정상 대기한다.
+- 워커 진단은 stderr 1줄(`clean: trimmed=… purge_status=… avail …`) — 디버그 빌드를 콘솔에서 실행할 때만 보인다.
+
 ## 5. 실기 QA
 
 - 시나리오는 마일스톤 완료 기준([02](02-roadmap.md) 표) 그대로 수행. 발견 건은 `(사용자 QA)` 태그 커밋으로 수정, journal에 재현 조건 기록.
