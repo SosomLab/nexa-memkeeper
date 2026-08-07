@@ -120,6 +120,8 @@ struct ListState {
     rows: Vec<Row>,
     /// 펼친 프로세스 PID — 갱신·정렬 후에도 유지된다.
     expanded: HashSet<u32>,
+    /// 기본 펼침을 이미 심어 준 묶음 키 — **한 번만** 심어야 접기가 유지된다.
+    seeded: HashSet<u32>,
     top: i32,
     /// 선택 행 — (pid, tid). tid≠0이면 쓰레드 행.
     sel: (u32, u32),
@@ -435,6 +437,7 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                     procs: Vec::new(),
                     rows: Vec::new(),
                     expanded: HashSet::new(),
+                    seeded: HashSet::new(),
                     top: 0,
                     sel: (u32::MAX, u32::MAX), // 분류 행(pid 0)과 겹치지 않는 "선택 없음" 값
                     sort_key: SortKey::PrivateWs,
@@ -1040,14 +1043,26 @@ fn rebuild(st: &mut ListState) {
     if st.view == 1 && !st.filter.is_empty() {
         expand_all_parents(st);
     }
+    // 자식이 하나뿐인 앱 묶음은 **처음 볼 때만** 펼쳐 둔다. 매번 펼치면 사용자가 접어도
+    // 2초 뒤 갱신에서 다시 열려 축소 버튼이 먹지 않는다(08-07 QA).
+    if st.view == 0 {
+        for gid in mk_core::auto_expand_groups(&st.procs) {
+            if st.seeded.insert(gid) {
+                st.expanded.insert(gid);
+            }
+        }
+    }
     st.rows = if st.view == 0 {
-        mk_core::build_grouped_rows(
-            &st.procs,
-            st.sort_key,
-            st.sort_asc,
-            &st.expanded,
-            st.show_threads,
-        )
+        // 검색 중에는 접어 둔 묶음이라도 펼쳐 그린다 — 일치한 자식이 접힘에 가려지면 안 된다.
+        // 접힘 상태(`expanded`)는 건드리지 않으므로 검색을 지우면 원래대로 돌아온다.
+        let all: HashSet<u32>;
+        let open = if st.filter.is_empty() {
+            &st.expanded
+        } else {
+            all = st.procs.iter().map(|p| p.pid).collect();
+            &all
+        };
+        mk_core::build_grouped_rows(&st.procs, st.sort_key, st.sort_asc, open, st.show_threads)
     } else if st.view == 1 {
         mk_core::build_rows(
             &st.procs,

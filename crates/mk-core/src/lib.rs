@@ -363,6 +363,36 @@ fn owned_children(procs: &[ProcInfo], idx: usize) -> Vec<usize> {
         .collect()
 }
 
+/// 처음 볼 때 **펼쳐 둘** 앱 묶음의 키(gid) 목록 — 자식이 하나뿐이라 접혀 있을 이유가 없는 묶음.
+///
+/// 펼침 여부 자체는 `expanded`가 유일한 진실이다. 이 값을 **행 구성 단계에서 강제로 열어 버리면
+/// 사용자가 접어도 다시 열려 축소 버튼이 먹지 않는다**(08-07 QA). 그래서 "기본값"은 호출 쪽에서
+/// 묶음이 처음 등장할 때 한 번만 `expanded`에 심는다.
+pub fn auto_expand_groups(procs: &[ProcInfo]) -> Vec<u32> {
+    use std::collections::HashMap;
+    let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
+    for (i, p) in procs.iter().enumerate() {
+        if categorize(p) == Category::Apps {
+            groups
+                .entry(p.display_name.to_ascii_lowercase())
+                .or_default()
+                .push(i);
+        }
+    }
+    groups
+        .values()
+        .filter_map(|members| {
+            let wins: usize = members.iter().map(|&i| procs[i].window_titles.len()).sum();
+            let kids: usize = members
+                .iter()
+                .flat_map(|&m| owned_children(procs, m))
+                .filter(|i| !members.contains(i))
+                .count();
+            (wins + kids <= 1).then(|| members.iter().map(|&i| procs[i].pid).min().unwrap_or(0))
+        })
+        .collect()
+}
+
 /// 작업 관리자식 행 구성: **분류 → 프로그램 묶음 → 개별 프로세스 → (옵션) 쓰레드**.
 ///
 /// 같은 실행 파일이 여러 개면 하나로 묶어 `이름 (N)`으로 보여주고 메모리를 합산한다(작업 관리자의
@@ -474,7 +504,9 @@ pub fn build_grouped_rows(
                     first.display_name.clone()
                 };
                 let child_rows = wins.len() + kids.len();
-                let is_open = expanded.contains(&gid) || child_rows <= 1;
+                // 펼침은 `expanded`만 본다 — 여기서 강제로 열면 축소 버튼이 먹지 않는다(08-07 QA).
+                // 자식 하나뿐인 묶음의 "처음엔 펼침"은 `auto_expand_groups`로 한 번만 심는다.
+                let is_open = expanded.contains(&gid);
                 let all = || members.iter().chain(kids.iter());
                 out.push(Row {
                     kind: RowKind::Group,
@@ -1060,13 +1092,10 @@ mod tests {
         assert_eq!(kept.len(), 1, "제목이 걸린 프로세스만 남는다");
         assert_eq!(kept[0].window_titles.len(), 1, "일치한 창만 남는다");
 
-        let rows = build_grouped_rows(
-            &kept,
-            SortKey::PrivateWs,
-            false,
-            &std::collections::HashSet::new(),
-            false,
-        );
+        // 자식이 하나뿐인 묶음은 기본 펼침 대상 — 목록 창이 `expanded`에 심어 준 상태를 흉내낸다.
+        let open: std::collections::HashSet<u32> = auto_expand_groups(&kept).into_iter().collect();
+        assert!(open.contains(&10), "자식 하나뿐인 묶음은 기본 펼침 대상");
+        let rows = build_grouped_rows(&kept, SortKey::PrivateWs, false, &open, false);
         let body: Vec<&RowKind> = rows
             .iter()
             .map(|r| &r.kind)
@@ -1076,6 +1105,19 @@ mod tests {
             body,
             vec![&RowKind::Group, &RowKind::Window],
             "앱 행과 창 행 두 줄"
+        );
+
+        // 08-07 QA: 접으면 접힌 채로 있어야 한다(행 구성이 다시 펼치면 축소 버튼이 먹지 않는다).
+        let collapsed = build_grouped_rows(
+            &kept,
+            SortKey::PrivateWs,
+            false,
+            &std::collections::HashSet::new(),
+            false,
+        );
+        assert!(
+            !collapsed.iter().any(|r| r.kind == RowKind::Window),
+            "접힌 묶음은 자식을 그리지 않는다"
         );
     }
 
