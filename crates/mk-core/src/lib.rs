@@ -74,15 +74,182 @@ pub fn fmt_last_clean(mb: u32, elapsed_mins: u64) -> String {
 
 // ---- 프로세스 목록 (docs/05 FR-2·FR-3) ----
 
+/// 쓰레드 1개 — 프로세스 확장 시 표시(FR-3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ThreadInfo {
+    pub tid: u32,
+    /// NT 쓰레드 상태(2=Running, 5=Waiting 등) — 표시용.
+    pub state: u32,
+    pub context_switches: u32,
+}
+
 /// 목록 1행 — 열거 결과의 플랫폼 독립 표현(수집은 mk-app, 정렬·표시는 여기).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProcInfo {
     pub pid: u32,
+    /// 부모 PID(트리 구성용). 0 또는 목록에 없는 값이면 최상위로 취급.
+    pub ppid: u32,
     pub name: String,
     /// 프라이빗 워킹셋(바이트) — Top N 정렬 기본 지표(docs/19 §2-2).
     pub private_ws: u64,
     pub ws: u64,
     pub threads: u32,
+    pub thread_list: Vec<ThreadInfo>,
+}
+
+/// 쓰레드 상태 표시 문자열(NT `KTHREAD_STATE`).
+pub fn thread_state_name(state: u32) -> &'static str {
+    match state {
+        0 => "초기화",
+        1 => "준비",
+        2 => "실행 중",
+        3 => "대기(Standby)",
+        4 => "종료됨",
+        5 => "대기",
+        6 => "전환",
+        7 => "대기 중(Deferred)",
+        _ => "-",
+    }
+}
+
+// ---- 트리 구성 (FR-3 — 프로세스 계층 + 쓰레드 확장) ----
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RowKind {
+    Process,
+    Thread,
+}
+
+/// 화면 1행(트리 평면화 결과) — 그리기는 이 구조만 보면 된다.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Row {
+    pub kind: RowKind,
+    /// 들여쓰기 단계(0 = 최상위).
+    pub depth: i32,
+    pub pid: u32,
+    /// 쓰레드 행일 때만 유효.
+    pub tid: u32,
+    pub label: String,
+    pub private_ws: u64,
+    pub ws: u64,
+    pub threads: u32,
+    /// 확장 버튼 표시 여부(자식 프로세스 또는 쓰레드 보유).
+    pub expandable: bool,
+    pub expanded: bool,
+}
+
+/// 프로세스 목록 → 트리 평면화. `expanded`에 든 PID의 자식·쓰레드가 펼쳐진다.
+/// 형제 정렬은 `key`/`asc`를 따르고, 부모가 목록에 없으면 최상위로 올린다(고아 보존).
+pub fn build_rows(
+    procs: &[ProcInfo],
+    key: SortKey,
+    asc: bool,
+    expanded: &std::collections::HashSet<u32>,
+) -> Vec<Row> {
+    use std::collections::{HashMap, HashSet};
+    let present: HashSet<u32> = procs.iter().map(|p| p.pid).collect();
+    let mut children: HashMap<u32, Vec<usize>> = HashMap::new();
+    let mut roots: Vec<usize> = Vec::new();
+    for (i, p) in procs.iter().enumerate() {
+        if p.ppid != 0 && p.ppid != p.pid && present.contains(&p.ppid) {
+            children.entry(p.ppid).or_default().push(i);
+        } else {
+            roots.push(i);
+        }
+    }
+    let cmp = |a: &usize, b: &usize| {
+        let (x, y) = (&procs[*a], &procs[*b]);
+        let ord = match key {
+            SortKey::Name => x
+                .name
+                .to_ascii_lowercase()
+                .cmp(&y.name.to_ascii_lowercase()),
+            SortKey::Pid => x.pid.cmp(&y.pid),
+            SortKey::PrivateWs => x.private_ws.cmp(&y.private_ws),
+            SortKey::Ws => x.ws.cmp(&y.ws),
+            SortKey::Threads => x.threads.cmp(&y.threads),
+        };
+        if asc { ord } else { ord.reverse() }.then(x.pid.cmp(&y.pid))
+    };
+    roots.sort_by(cmp);
+    for v in children.values_mut() {
+        v.sort_by(cmp);
+    }
+
+    let mut out = Vec::with_capacity(procs.len());
+    let mut visiting: HashSet<u32> = HashSet::new(); // 순환 보호(비정상 ppid 대비)
+    fn walk(
+        idx: usize,
+        depth: i32,
+        procs: &[ProcInfo],
+        children: &std::collections::HashMap<u32, Vec<usize>>,
+        expanded: &std::collections::HashSet<u32>,
+        visiting: &mut std::collections::HashSet<u32>,
+        out: &mut Vec<Row>,
+    ) {
+        let p = &procs[idx];
+        if !visiting.insert(p.pid) {
+            return;
+        }
+        let kids = children.get(&p.pid);
+        let has_kids = kids.is_some_and(|k| !k.is_empty());
+        let is_expanded = expanded.contains(&p.pid);
+        out.push(Row {
+            kind: RowKind::Process,
+            depth,
+            pid: p.pid,
+            tid: 0,
+            label: p.name.clone(),
+            private_ws: p.private_ws,
+            ws: p.ws,
+            threads: p.threads,
+            expandable: has_kids || !p.thread_list.is_empty(),
+            expanded: is_expanded,
+        });
+        if is_expanded {
+            if let Some(kids) = kids {
+                for &c in kids {
+                    walk(c, depth + 1, procs, children, expanded, visiting, out);
+                }
+            }
+            for t in &p.thread_list {
+                out.push(Row {
+                    kind: RowKind::Thread,
+                    depth: depth + 1,
+                    pid: p.pid,
+                    tid: t.tid,
+                    label: format!("쓰레드 {} · {}", t.tid, thread_state_name(t.state)),
+                    private_ws: 0,
+                    ws: 0,
+                    threads: t.context_switches,
+                    expandable: false,
+                    expanded: false,
+                });
+            }
+        }
+        visiting.remove(&p.pid);
+    }
+    for r in roots {
+        walk(r, 0, procs, &children, expanded, &mut visiting, &mut out);
+    }
+    out
+}
+
+/// `pid`의 모든 하위 프로세스 PID(자기 자신 제외) — 트리 종료용. 순환에 안전.
+pub fn descendants(procs: &[ProcInfo], pid: u32) -> Vec<u32> {
+    use std::collections::HashSet;
+    let mut out = Vec::new();
+    let mut seen: HashSet<u32> = HashSet::from([pid]);
+    let mut queue = vec![pid];
+    while let Some(cur) = queue.pop() {
+        for p in procs.iter().filter(|p| p.ppid == cur && p.pid != cur) {
+            if seen.insert(p.pid) {
+                out.push(p.pid);
+                queue.push(p.pid);
+            }
+        }
+    }
+    out
 }
 
 /// 점유 상위 N개 — `private_ws` 내림차순, 동률은 PID 오름차순(표시 안정성).
@@ -90,6 +257,33 @@ pub fn top_n(mut procs: Vec<ProcInfo>, n: usize) -> Vec<ProcInfo> {
     procs.sort_by(|a, b| b.private_ws.cmp(&a.private_ws).then(a.pid.cmp(&b.pid)));
     procs.truncate(n);
     procs
+}
+
+/// 목록 정렬 기준(그리드 헤더 클릭 — FR-3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortKey {
+    Name,
+    Pid,
+    PrivateWs,
+    Ws,
+    Threads,
+}
+
+/// 목록 정렬. 이름은 대소문자 무시, 모든 기준에서 동률은 PID 오름차순으로 안정화한다.
+pub fn sort_procs(v: &mut [ProcInfo], key: SortKey, asc: bool) {
+    v.sort_by(|a, b| {
+        let ord = match key {
+            SortKey::Name => a
+                .name
+                .to_ascii_lowercase()
+                .cmp(&b.name.to_ascii_lowercase()),
+            SortKey::Pid => a.pid.cmp(&b.pid),
+            SortKey::PrivateWs => a.private_ws.cmp(&b.private_ws),
+            SortKey::Ws => a.ws.cmp(&b.ws),
+            SortKey::Threads => a.threads.cmp(&b.threads),
+        };
+        if asc { ord } else { ord.reverse() }.then(a.pid.cmp(&b.pid))
+    });
 }
 
 /// 목록 행 용량 표기 — 1GB 미만은 MB 정수, 이상은 GB 소수 1자리.
@@ -186,6 +380,7 @@ pub fn clean_report(outcome: Option<CleanOutcome>) -> (String, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     #[test]
     fn used_percent_rounds_half_up() {
@@ -267,11 +462,113 @@ mod tests {
     fn p(pid: u32, name: &str, private_ws: u64) -> ProcInfo {
         ProcInfo {
             pid,
+            ppid: 0,
             name: name.to_string(),
             private_ws,
             ws: private_ws * 2,
             threads: 1,
+            thread_list: Vec::new(),
         }
+    }
+
+    fn child(pid: u32, ppid: u32, name: &str, private_ws: u64) -> ProcInfo {
+        ProcInfo {
+            ppid,
+            ..p(pid, name, private_ws)
+        }
+    }
+
+    #[test]
+    fn build_rows_nests_children_when_expanded() {
+        let procs = vec![
+            p(100, "parent.exe", 500),
+            child(200, 100, "child.exe", 300),
+            child(300, 200, "grand.exe", 100),
+        ];
+        // 접힌 상태 = 최상위만
+        let rows = build_rows(&procs, SortKey::PrivateWs, false, &HashSet::new());
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].expandable && !rows[0].expanded);
+
+        // parent만 펼침 → child가 depth 1로
+        let rows = build_rows(&procs, SortKey::PrivateWs, false, &HashSet::from([100]));
+        assert_eq!(
+            rows.iter().map(|r| (r.pid, r.depth)).collect::<Vec<_>>(),
+            vec![(100, 0), (200, 1)]
+        );
+        // 전부 펼침 → 3단계
+        let rows = build_rows(
+            &procs,
+            SortKey::PrivateWs,
+            false,
+            &HashSet::from([100, 200]),
+        );
+        assert_eq!(
+            rows.iter().map(|r| (r.pid, r.depth)).collect::<Vec<_>>(),
+            vec![(100, 0), (200, 1), (300, 2)]
+        );
+    }
+
+    #[test]
+    fn build_rows_lists_threads_after_children() {
+        let mut parent = p(10, "a.exe", 100);
+        parent.thread_list = vec![
+            ThreadInfo {
+                tid: 11,
+                state: 2,
+                context_switches: 5,
+            },
+            ThreadInfo {
+                tid: 12,
+                state: 5,
+                context_switches: 7,
+            },
+        ];
+        parent.threads = 2;
+        let procs = vec![parent, child(20, 10, "b.exe", 50)];
+        let rows = build_rows(&procs, SortKey::PrivateWs, false, &HashSet::from([10]));
+        let kinds: Vec<_> = rows.iter().map(|r| (r.kind, r.tid)).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                (RowKind::Process, 0),
+                (RowKind::Process, 0), // 자식 프로세스 먼저
+                (RowKind::Thread, 11),
+                (RowKind::Thread, 12),
+            ]
+        );
+    }
+
+    #[test]
+    fn build_rows_keeps_orphans_at_top_level() {
+        // 부모(999)가 목록에 없는 고아 — 최상위로 올라와야 사라지지 않는다
+        let procs = vec![child(50, 999, "orphan.exe", 10)];
+        let rows = build_rows(&procs, SortKey::PrivateWs, false, &HashSet::new());
+        assert_eq!(rows.len(), 1);
+        assert_eq!((rows[0].pid, rows[0].depth), (50, 0));
+    }
+
+    #[test]
+    fn build_rows_survives_parent_cycle() {
+        // 비정상 데이터: 서로가 부모 — 무한 재귀 없이 끝나야 한다
+        let procs = vec![child(1, 2, "a.exe", 1), child(2, 1, "b.exe", 1)];
+        let rows = build_rows(&procs, SortKey::PrivateWs, false, &HashSet::from([1, 2]));
+        assert!(rows.len() <= 4);
+    }
+
+    #[test]
+    fn descendants_collects_all_levels() {
+        let procs = vec![
+            p(1, "root.exe", 1),
+            child(2, 1, "a.exe", 1),
+            child(3, 2, "b.exe", 1),
+            child(4, 1, "c.exe", 1),
+            p(9, "other.exe", 1),
+        ];
+        let mut d = descendants(&procs, 1);
+        d.sort();
+        assert_eq!(d, vec![2, 3, 4]);
+        assert!(descendants(&procs, 9).is_empty());
     }
 
     #[test]
@@ -301,6 +598,50 @@ mod tests {
     fn top_n_handles_fewer_than_requested() {
         assert_eq!(top_n(vec![p(1, "a.exe", 5)], 5).len(), 1);
         assert!(top_n(Vec::new(), 5).is_empty());
+    }
+
+    #[test]
+    fn sort_procs_by_each_key() {
+        let mut v = vec![
+            p(30, "Beta.exe", 100),
+            p(10, "alpha.exe", 300),
+            p(20, "Gamma.exe", 200),
+        ];
+        sort_procs(&mut v, SortKey::PrivateWs, false);
+        assert_eq!(
+            v.iter().map(|x| x.pid).collect::<Vec<_>>(),
+            vec![10, 20, 30]
+        );
+        sort_procs(&mut v, SortKey::PrivateWs, true);
+        assert_eq!(
+            v.iter().map(|x| x.pid).collect::<Vec<_>>(),
+            vec![30, 20, 10]
+        );
+        // 이름은 대소문자 무시 — alpha < Beta < Gamma
+        sort_procs(&mut v, SortKey::Name, true);
+        assert_eq!(
+            v.iter().map(|x| x.pid).collect::<Vec<_>>(),
+            vec![10, 30, 20]
+        );
+        sort_procs(&mut v, SortKey::Pid, true);
+        assert_eq!(
+            v.iter().map(|x| x.pid).collect::<Vec<_>>(),
+            vec![10, 20, 30]
+        );
+    }
+
+    #[test]
+    fn sort_procs_ties_stay_pid_ascending() {
+        let mut v = vec![
+            p(30, "a.exe", 100),
+            p(10, "b.exe", 100),
+            p(20, "c.exe", 100),
+        ];
+        sort_procs(&mut v, SortKey::PrivateWs, false);
+        assert_eq!(
+            v.iter().map(|x| x.pid).collect::<Vec<_>>(),
+            vec![10, 20, 30]
+        );
     }
 
     #[test]

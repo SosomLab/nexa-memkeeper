@@ -7,6 +7,12 @@ authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "Nexa MemKeeper 앱 — 상주 셸·온디맨드 워커 겸용 단일 bin (--worker 분기, DR-7)"
+build = "build.rs"
+
+# 배포 파일명 = 표시 이름과 일치시킨다(알림·작업 관리자에 mk-app.exe가 노출되지 않도록).
+[[bin]]
+name = "NexaMemKeeper"
+path = "src/main.rs"
 
 [dependencies]
 mk-core = { workspace = true }
@@ -19,9 +25,11 @@ windows = { version = "0.62.2", features = [
   "Win32_Security",
   "Win32_System_LibraryLoader",
   "Win32_System_ProcessStatus",
+  "Win32_System_Registry",
   "Win32_System_SystemInformation",
   "Win32_System_Threading",
   "Win32_System_WindowsProgramming",
+  "Win32_UI_Controls",
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
 ] }

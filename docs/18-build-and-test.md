@@ -33,9 +33,11 @@ cargo build --release
 
 ```powershell
 cargo build --release
-Stop-Process -Name mk-app -Confirm:$false -ErrorAction SilentlyContinue
-Start-Process target\release\mk-app.exe
+Stop-Process -Name NexaMemKeeper -Confirm:$false -ErrorAction SilentlyContinue
+Start-Process target\release\NexaMemKeeper.exe
 ```
+
+> 산출물 이름은 **`NexaMemKeeper.exe`**(DR-12 — `[[bin]] name`). 버전 리소스는 `build.rs`가 Windows SDK `rc.exe`로 임베드하며, rc.exe가 없으면 경고만 남기고 건너뛴다(빌드는 성공).
 
 ## 4. 예산 실측 (DR-8 게이트 — 마일스톤 완료 전 필수)
 

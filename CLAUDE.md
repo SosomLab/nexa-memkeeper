@@ -6,7 +6,11 @@
 ## 1. 이 프로젝트는
 
 **Nexa MemKeeper** = Windows **시스템 트레이 상주 초경량 메모리 최적화 도구** — 지속 관찰·회수로 여유 메모리 확보, Top 5 점유 팝업·프로세스 트리 뷰(쓰레드)·선택 종료/회수·간단 설정. **도구 자신의 점유 최소화가 정체성**(유휴 RSS ≤5MB 제안). 상세 [docs/00](docs/00-vision.md)·[docs/05](docs/05-requirements.md).
-현 단계: **M0·M1·M2 완료(08-07 7차) — 트레이 셸 + 정리 엔진(+209MB 실측) + Top 5 팝업(열거 6.5ms) 동작, 예산 유지(exe 0.36MB·유휴 RSS 2.23MB·NFR-3 복귀 확인). 실기 QA 후 0.3.0 승격, 다음은 M3 프로세스 트리 뷰.**
+현 단계: **M0~M3 완료(08-07 8차) — 트레이 셸 + 정리 엔진 + Top 5 팝업 + 메인 화면(트리 그리드·정렬·쓰레드/트리 종료). 상주 유휴 1.71MB·exe 0.41MB. 실기 QA 후 0.4.0 승격, 다음은 M4 설정.**
+
+<!-- 이전 단계 기록: M0·M1·M2 완료(08-07 7차) — 트레이 셸 + 정리 엔진(+209MB 실측) + Top 5 팝업(열거 6.5ms) 동작, 예산 유지(exe 0.36MB·유휴 RSS 2.23MB·NFR-3 복귀 확인). 실기 QA 후 0.3.0 승격 -->
+
+- 실행 파일명은 **`NexaMemKeeper.exe`**(DR-12) — `mk-app`은 내부 crate 이름일 뿐, 프로세스·명령에는 배포명을 쓴다.
 
 - 조직: **SosomLab** · 개발자: Sangyong Bae · kiros33@gmail.com
 - 문서·git 규약은 `SosomLab/nexa-dir2`의 검증 표준을 전면 계승([docs/16](docs/16-doc-git-conventions.md)).
@@ -24,6 +28,9 @@
 | DR-7 | 상주 구조 = **하이브리드** — 셸(트레이·관찰·Top 5 팝업) + 온디맨드 워커(`--worker`, 트리 뷰·정리 엔진 — 100% 회수·크래시 격리) |
 | DR-8 | **예산 게이트**: 유휴 RSS ≤5MB · exe ≤3MB · 외부 DLL 0 · 유휴 CPU ~0% — 초과 시 main 병합 금지([docs/18 §4](docs/18-build-and-test.md)) |
 | DR-9 | **배포 2채널**: 설치형 exe(Inno — 프로그램 목록 등록·자동 실행 질문 **기본 체크**) + 포터블 ZIP(무서명 오탐 회피). 구현 M5 |
+| DR-10 | **목록 창 = 메인 화면** — 메뉴바 + 트리 그리드(확장·정렬) + 프로세스/트리/쓰레드 종료. 구조는 온디맨드 워커 유지(DR-7) |
+| DR-11 | **자동 실행 = `HKCU\…\Run`** — 포터블 원칙의 명시적 예외(사용자가 메뉴로 켤 때만 값 1개, 끄면 삭제) |
+| DR-12 | **exe = `NexaMemKeeper.exe` + 버전 리소스**(`FileDescription=Nexa MemKeeper`) — 알림·작업 관리자에 내부명 노출 금지 |
 
 ## 3. 작업 규약 (요약 — SSOT는 [docs/16](docs/16-doc-git-conventions.md))
 
@@ -40,8 +47,8 @@
 
 1. 이 CLAUDE.md + [docs/STATUS.md](docs/STATUS.md) → 2. [DEVLOG](docs/DEVLOG.md) 최상단 + 최신 journal → 3. 할 일 = [docs/TODO.md](docs/TODO.md)(P-1부터 순차).
 
-## 5. 다음 단계 (2026-08-07 7차 갱신)
+## 5. 다음 단계 (2026-08-07 8차 갱신)
 
-1. **M3 — 프로세스 트리 뷰(워커 창)**: 트리+쓰레드·2000ms 갱신·정렬/검색·2단계 종료·보호 표시([docs/02 M3](docs/02-roadmap.md)). 팝업 [목록 보기…] 버튼이 진입점.
-2. 사용자 실기 QA(트레이·정리·팝업·승격·24h) → `release: 0.3.0 승격`(태그 push는 별도 승인).
-3. 이후 M4(설정 — [docs/09](docs/09-settings-schema.md))·M5(배포 2채널 — DR-9). 기능 후보 X-1~X-7([docs/05 §5](docs/05-requirements.md))은 판단 대기.
+1. **M4 — 설정**: `data\settings.ini` 저장/로드([docs/09](docs/09-settings-schema.md))·설정 창·임계값 자동 정리(90%·쿨다운)·핫키. 자동 실행·갱신 주기는 M3에서 선행 구현됨.
+2. 사용자 실기 QA(트레이·정리·팝업·메인 화면 트리/정렬/종료) → `release: 0.4.0 승격`(태그 push는 별도 승인).
+3. M3 잔여(이름 검색·열 폭 조절·창 위치 기억) → M5(배포 2채널 — DR-9). 기능 후보 X-1~X-7([docs/05 §5](docs/05-requirements.md))은 판단 대기.

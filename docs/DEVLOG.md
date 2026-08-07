@@ -4,6 +4,7 @@
 
 ## 2026-08-07
 
+- 12차: 메인 화면 완성(M3) — 메뉴바·트리 그리드·헤더 정렬·쓰레드 확장·프로세스/트리/쓰레드 종료·자동 실행(DR-10~12). 알림 이름 `Nexa MemKeeper`로 수정. Memory Compression 문의 조사([19 §4-5](19-memory-measurement-and-reclaim.md)). → [journal/2026-08-07](journal/2026-08-07.md)
 - 11차: M2 Top 5 팝업 완료(`feat/m2-top5-popup`→main) — 열거 482프로세스 6.5ms·2000ms 자동 갱신·항목 트림/종료. NFR-3·NFR-4 통과. 15 §4 정정(읽기 전용 NT 조회는 셸 허용). → [journal/2026-08-07](journal/2026-08-07.md)
 - 10차: 문서 최신화(README 현재 상태·설계 원칙, MILESTONES M2~M5 보강) 후 **최초 원격 push**(커밋 10건). → [journal/2026-08-07](journal/2026-08-07.md)
 - 9차: M1 정리 엔진 v1 완료(`feat/m1-clean-engine`→main) — 워커 정리(트림 461건·퍼지)·회수 +209MB 실측·풍선 알림·승격 재시작. 예산 유지(exe 0.34MB·RSS 2.20MB). → [journal/2026-08-07](journal/2026-08-07.md)
