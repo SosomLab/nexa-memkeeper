@@ -53,6 +53,7 @@ const ID_KILL_TREE_SEL: usize = 213;
 const ID_KILL_THREAD_SEL: usize = 214;
 const ID_PREFS: usize = 220;
 const ID_AUTORUN: usize = 221;
+const ID_HIDE_PSEUDO: usize = 222;
 const ID_REFRESH_1S: usize = 230;
 const ID_REFRESH_2S: usize = 231;
 const ID_REFRESH_5S: usize = 232;
@@ -83,6 +84,8 @@ struct ListState {
     sel: (u32, u32),
     sort_key: SortKey,
     sort_asc: bool,
+    /// 의사 프로세스(Memory Compression 등) 숨김 — 기본 on(사용자 확정 08-07).
+    hide_pseudo: bool,
     refresh_ms: u32,
     font: HFONT,
     font_head: HFONT,
@@ -194,6 +197,12 @@ unsafe fn build_menu(hwnd: HWND) -> HMENU {
         w!("Windows 시작 시 자동 실행(&A)"),
     );
     let _ = AppendMenuW(cfg, MF_POPUP, interval.0 as usize, w!("목록 갱신 주기(&I)"));
+    let _ = AppendMenuW(
+        cfg,
+        MF_STRING,
+        ID_HIDE_PSEUDO,
+        w!("의사 프로세스 숨기기(&H) — Memory Compression 등"),
+    );
     let _ = AppendMenuW(cfg, MF_SEPARATOR, 0, None);
     let _ = AppendMenuW(
         cfg,
@@ -211,13 +220,23 @@ unsafe fn build_menu(hwnd: HWND) -> HMENU {
     bar
 }
 
-/// 메뉴 체크 상태 동기화(자동 실행·갱신 주기).
-unsafe fn sync_menu_checks(menu: HMENU, refresh_ms: u32) {
+/// 메뉴 체크 상태 동기화(자동 실행·의사 프로세스 숨김·갱신 주기).
+unsafe fn sync_menu_checks(menu: HMENU, refresh_ms: u32, hide_pseudo: bool) {
     let on = autorun_enabled();
     CheckMenuItem(
         menu,
         ID_AUTORUN as u32,
         MF_BYCOMMAND.0 | if on { MF_CHECKED.0 } else { MF_UNCHECKED.0 },
+    );
+    CheckMenuItem(
+        menu,
+        ID_HIDE_PSEUDO as u32,
+        MF_BYCOMMAND.0
+            | if hide_pseudo {
+                MF_CHECKED.0
+            } else {
+                MF_UNCHECKED.0
+            },
     );
     for (id, ms) in [
         (ID_REFRESH_1S, 1_000u32),
@@ -252,6 +271,7 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                     sel: (0, 0),
                     sort_key: SortKey::PrivateWs,
                     sort_asc: false, // 점유 큰 순 = 기본
+                    hide_pseudo: true,
                     refresh_ms: crate::popup::REFRESH_MS,
                     font: make_font(-12, 400),
                     font_head: make_font(-12, 600),
@@ -260,7 +280,7 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                 })
             });
             reload();
-            sync_menu_checks(menu, crate::popup::REFRESH_MS);
+            sync_menu_checks(menu, crate::popup::REFRESH_MS, true);
             SetTimer(Some(hwnd), TIMER_REFRESH, crate::popup::REFRESH_MS, None);
             sync_scrollbar(hwnd);
             LRESULT(0)
@@ -421,7 +441,16 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
             if !ok {
                 info_box(hwnd, "자동 실행", "설정을 변경하지 못했습니다.");
             }
-            with_state(|st| sync_menu_checks(st.menu, st.refresh_ms));
+            with_state(|st| sync_menu_checks(st.menu, st.refresh_ms, st.hide_pseudo));
+        }
+        ID_HIDE_PSEUDO => {
+            with_state(|st| {
+                st.hide_pseudo = !st.hide_pseudo;
+                sync_menu_checks(st.menu, st.refresh_ms, st.hide_pseudo);
+            });
+            reload();
+            sync_scrollbar(hwnd);
+            let _ = InvalidateRect(Some(hwnd), None, false);
         }
         ID_REFRESH_1S | ID_REFRESH_2S | ID_REFRESH_5S => {
             let ms = match id {
@@ -431,7 +460,7 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
             };
             with_state(|st| {
                 st.refresh_ms = ms;
-                sync_menu_checks(st.menu, ms);
+                sync_menu_checks(st.menu, ms, st.hide_pseudo);
             });
             SetTimer(Some(hwnd), TIMER_REFRESH, ms, None);
         }
@@ -494,7 +523,7 @@ fn with_state_ret<T>(f: impl FnOnce(&mut ListState) -> T) -> Option<T> {
 fn reload() {
     let all = crate::procs::enumerate();
     with_state(|st| {
-        st.procs = all;
+        st.procs = mk_core::filter_pseudo(all, st.hide_pseudo);
         rebuild(st);
     });
 }

@@ -324,6 +324,28 @@ pub fn is_protected(image_name: &str) -> bool {
     PROTECTED.contains(&lower.as_str())
 }
 
+/// 커널 의사(pseudo) 프로세스 — 실행 이미지가 없는 최소 프로세스. 작업 관리자도 목록에서 숨긴다
+/// (숨김 근거·정체는 docs/19 §4-5). 조작 불가이므로 기본은 숨김, 옵션으로 표시.
+const PSEUDO: &[&str] = &[
+    "memcompression",
+    "memory compression",
+    "registry",
+    "secure system",
+];
+
+pub fn is_pseudo(image_name: &str) -> bool {
+    let lower = image_name.to_ascii_lowercase();
+    PSEUDO.contains(&lower.as_str())
+}
+
+/// 표시 목록 필터 — `hide_pseudo`면 의사 프로세스를 제외한다(기본 동작).
+pub fn filter_pseudo(procs: Vec<ProcInfo>, hide_pseudo: bool) -> Vec<ProcInfo> {
+    if !hide_pseudo {
+        return procs;
+    }
+    procs.into_iter().filter(|p| !is_pseudo(&p.name)).collect()
+}
+
 // ---- 워커 결과 프로토콜 (DR-7 — 결과 = 종료 코드 1개) ----
 
 /// 종료 코드 비트 31: 일부 영역이 권한 부족으로 생략됨(관리자 필요).
@@ -663,6 +685,27 @@ mod tests {
         assert!(is_protected("System Idle Process"));
         assert!(!is_protected("notepad.exe"));
         assert!(!is_protected("chrome.exe"));
+    }
+
+    #[test]
+    fn pseudo_processes_hidden_by_default() {
+        assert!(is_pseudo("Memory Compression"));
+        assert!(is_pseudo("MemCompression"));
+        assert!(is_pseudo("Registry"));
+        assert!(is_pseudo("Secure System"));
+        // 작업 관리자도 표시하는 실제 프로세스는 의사 프로세스가 아니다
+        assert!(!is_pseudo("System"));
+        assert!(!is_pseudo("System Idle Process"));
+        assert!(!is_pseudo("chrome.exe"));
+
+        let v = vec![
+            p(1, "Memory Compression", 900),
+            p(2, "chrome.exe", 500),
+            p(3, "Registry", 100),
+        ];
+        let hidden = filter_pseudo(v.clone(), true);
+        assert_eq!(hidden.iter().map(|x| x.pid).collect::<Vec<_>>(), vec![2]);
+        assert_eq!(filter_pseudo(v, false).len(), 3);
     }
 
     #[test]

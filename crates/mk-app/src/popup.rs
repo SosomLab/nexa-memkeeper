@@ -116,7 +116,9 @@ pub unsafe fn show(owner: HWND) -> Option<HWND> {
 /// 현재 스냅샷 + Top N 목록 수집(읽기 전용 — procs::enumerate 1콜).
 fn collect() -> (MemSnapshot, Vec<ProcInfo>) {
     let snap = crate::shell::read_mem();
-    let rows = mk_core::top_n(crate::procs::enumerate(), ROWS as usize);
+    // 의사 프로세스(Memory Compression 등)는 조작 불가라 기본 숨김 — 메인 화면과 같은 규칙.
+    let procs = mk_core::filter_pseudo(crate::procs::enumerate(), true);
+    let rows = mk_core::top_n(procs, ROWS as usize);
     (snap, rows)
 }
 

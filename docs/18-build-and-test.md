@@ -31,9 +31,11 @@ cargo build --release
 
 **코드를 고쳤으면 릴리스 빌드 → 실행 중이면 중지 → 재실행**까지 한 번에 수행한다. 사용자가 트레이에서 곧바로 실기 확인을 하므로, 예전 바이너리가 상주해 있으면 안 된다(디버그 빌드는 콘솔이 뜨고 예산 수치도 달라 실기 확인 기준이 될 수 없다). 문서만 고친 경우는 불필요.
 
+**순서 주의 — 중지가 먼저다.** 실행 중인 exe는 Windows가 파일을 잠그기 때문에, 빌드를 먼저 하면 `액세스가 거부되었습니다(os error 5)`로 링크에 실패한다(08-07 실측). 더 나쁜 경우는 **빌드 실패를 못 보고 옛 바이너리를 그대로 재실행**하는 것이다.
+
 ```powershell
-cargo build --release
 Stop-Process -Name NexaMemKeeper -Confirm:$false -ErrorAction SilentlyContinue
+cargo build --release
 Start-Process target\release\NexaMemKeeper.exe
 ```
 
