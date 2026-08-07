@@ -1,7 +1,11 @@
 //! mk-core — 관찰·정리 엔진의 순수 로직.
 //! 수집(시스템 콜)은 mk-app(Win32)에서, 계산·표시·판정은 전부 여기서(단위 테스트 대상).
 
+pub mod hotkey;
+pub mod i18n;
 pub mod settings;
+pub use hotkey::{hotkey_to_string, parse_hotkey, Hotkey};
+pub use i18n::{lang, lang_from_setting, set_lang, tr, Lang};
 pub use settings::{Areas, Settings};
 
 /// 트레이 색 단계 임계(%) — 기본값. M4에서 settings로 이동한다(docs/05 §4-3).
@@ -88,11 +92,11 @@ pub fn tray_tooltip(s: &MemSnapshot) -> String {
 /// 툴팁 둘째 줄(FR-1) — 마지막 정리 회수량·경과.
 pub fn fmt_last_clean(mb: u32, elapsed_mins: u64) -> String {
     let ago = match elapsed_mins {
-        0 => "방금".to_string(),
-        m if m < 60 => format!("{m}분 전"),
-        m => format!("{}시간 전", m / 60),
+        0 => tr("just now").to_string(),
+        m if m < 60 => format!("{m}m ago"),
+        m => format!("{}h ago", m / 60),
     };
-    format!("마지막 정리 {mb}MB · {ago}")
+    format!("{} {mb}MB · {ago}", tr("Last cleanup"))
 }
 
 // ---- 프로세스 목록 (docs/05 FR-2·FR-3) ----
@@ -123,14 +127,14 @@ pub struct ProcInfo {
 /// 쓰레드 상태 표시 문자열(NT `KTHREAD_STATE`).
 pub fn thread_state_name(state: u32) -> &'static str {
     match state {
-        0 => "초기화",
-        1 => "준비",
-        2 => "실행 중",
-        3 => "대기(Standby)",
-        4 => "종료됨",
-        5 => "대기",
-        6 => "전환",
-        7 => "대기 중(Deferred)",
+        0 => tr("Initialized"),
+        1 => tr("Ready"),
+        2 => tr("Running"),
+        3 => tr("Standby"),
+        4 => tr("Terminated"),
+        5 => tr("Waiting"),
+        6 => tr("Transition"),
+        7 => tr("Deferred Ready"),
         _ => "-",
     }
 }
@@ -241,7 +245,12 @@ pub fn build_rows(
                     depth: depth + 1,
                     pid: p.pid,
                     tid: t.tid,
-                    label: format!("쓰레드 {} · {}", t.tid, thread_state_name(t.state)),
+                    label: format!(
+                        "{} {} · {}",
+                        tr("Thread"),
+                        t.tid,
+                        thread_state_name(t.state)
+                    ),
                     private_ws: 0,
                     ws: 0,
                     threads: t.context_switches,
@@ -306,7 +315,12 @@ pub fn build_rows_flat(
                     depth: 1,
                     pid: p.pid,
                     tid: t.tid,
-                    label: format!("쓰레드 {} · {}", t.tid, thread_state_name(t.state)),
+                    label: format!(
+                        "{} {} · {}",
+                        tr("Thread"),
+                        t.tid,
+                        thread_state_name(t.state)
+                    ),
                     private_ws: 0,
                     ws: 0,
                     threads: t.context_switches,
@@ -482,15 +496,15 @@ pub fn decode_clean_result(code: u32) -> Option<CleanOutcome> {
 pub fn clean_report(outcome: Option<CleanOutcome>) -> (String, String) {
     match outcome {
         Some(o) => {
-            let mut body = format!("{}MB 회수", o.mb);
+            let mut body = format!("{}{}", o.mb, tr("MB reclaimed"));
             if o.partial {
-                body.push_str(" · 일부 영역 생략(관리자 권한 필요)");
+                body.push_str(tr(" · some areas skipped (administrator rights required)"));
             }
-            ("메모리 정리 완료".to_string(), body)
+            (tr("Memory cleanup complete").to_string(), body)
         }
         None => (
-            "메모리 정리 실패".to_string(),
-            "워커가 비정상 종료했습니다. 다시 시도해 주세요.".to_string(),
+            tr("Memory cleanup failed").to_string(),
+            tr("The worker exited abnormally. Please try again.").to_string(),
         ),
     }
 }
@@ -599,9 +613,11 @@ mod tests {
 
     #[test]
     fn fmt_last_clean_ago() {
-        assert_eq!(fmt_last_clean(12, 0), "마지막 정리 12MB · 방금");
-        assert_eq!(fmt_last_clean(340, 3), "마지막 정리 340MB · 3분 전");
-        assert_eq!(fmt_last_clean(5, 120), "마지막 정리 5MB · 2시간 전");
+        // 기본 언어 = 영어(i18n). 한국어는 i18n 표에서 검증한다.
+        set_lang(Lang::En);
+        assert_eq!(fmt_last_clean(12, 0), "Last cleanup 12MB · just now");
+        assert_eq!(fmt_last_clean(340, 3), "Last cleanup 340MB · 3m ago");
+        assert_eq!(fmt_last_clean(5, 120), "Last cleanup 5MB · 2h ago");
     }
 
     fn p(pid: u32, name: &str, private_ws: u64) -> ProcInfo {
@@ -901,18 +917,30 @@ mod tests {
 
     #[test]
     fn clean_report_texts() {
+        set_lang(Lang::En);
         let (t, b) = clean_report(Some(CleanOutcome {
             mb: 340,
             partial: false,
         }));
-        assert_eq!(t, "메모리 정리 완료");
-        assert_eq!(b, "340MB 회수");
+        assert_eq!(t, "Memory cleanup complete");
+        assert_eq!(b, "340MB reclaimed");
         let (_, b) = clean_report(Some(CleanOutcome {
             mb: 12,
             partial: true,
         }));
-        assert!(b.contains("관리자 권한 필요"));
+        assert!(b.contains("administrator rights required"));
         let (t, _) = clean_report(None);
-        assert_eq!(t, "메모리 정리 실패");
+        assert_eq!(t, "Memory cleanup failed");
+    }
+
+    #[test]
+    fn report_follows_selected_language() {
+        set_lang(Lang::Ko);
+        let (t, _) = clean_report(Some(CleanOutcome {
+            mb: 1,
+            partial: false,
+        }));
+        assert_eq!(t, "메모리 정리 완료");
+        set_lang(Lang::En); // 다른 테스트에 영향 주지 않게 복귀
     }
 }

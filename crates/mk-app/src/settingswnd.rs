@@ -4,32 +4,34 @@
 //!
 //! 저장은 [`crate::config::save`] → `data\settings.ini`. 값 검증은 mk-core가 담당(범위 클램프).
 
-use mk_core::Settings;
+use mk_core::{tr, Settings};
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{GetStockObject, DEFAULT_GUI_FONT, HFONT, HGDIOBJ};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::{
-    CheckDlgButton, IsDlgButtonChecked, BST_CHECKED, DLG_BUTTON_CHECK_STATE,
+    CheckDlgButton, InitCommonControlsEx, IsDlgButtonChecked, BST_CHECKED, DLG_BUTTON_CHECK_STATE,
+    ICC_HOTKEY_CLASS, INITCOMMONCONTROLSEX,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    AdjustWindowRect, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
+    AdjustWindowRect, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetDlgItem,
     GetDlgItemInt, GetMessageW, LoadCursorW, LoadIconW, MessageBoxW, PostQuitMessage,
     RegisterClassW, SendMessageW, SetDlgItemInt, SetForegroundWindow, ShowWindow,
     SystemParametersInfoW, TranslateMessage, BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_GROUPBOX,
-    BS_PUSHBUTTON, CW_USEDEFAULT, ES_NUMBER, HMENU, IDC_ARROW, MB_ICONWARNING, MB_OK, MSG,
-    SPI_GETWORKAREA, SW_SHOWNORMAL, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_SETFONT, WNDCLASSW, WS_BORDER, WS_CAPTION,
-    WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
+    BS_PUSHBUTTON, CBS_DROPDOWNLIST, CW_USEDEFAULT, ES_NUMBER, HMENU, IDC_ARROW,
+    MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MSG, SPI_GETWORKAREA, SW_SHOWNORMAL,
+    SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_CREATE,
+    WM_DESTROY, WM_SETFONT, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE,
+    WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 
 const CLASS: PCWSTR = w!("NexaMemKeeperSettings");
 /// **클라이언트 영역** 크기(모든 레이아웃 좌표의 기준). 창 크기는 여기에 테두리·제목 표시줄을
 /// 더해 [`AdjustWindowRect`]로 역산한다 — 이 값을 그대로 창 크기로 넘기면 아래쪽이 잘린다(08-07 QA).
 const W: i32 = 452;
-const H: i32 = 548;
+const H: i32 = 602;
 /// 하단 버튼 줄 y좌표(콘텐츠 마지막 + 여백).
-const BTN_Y: i32 = 496;
+const BTN_Y: i32 = 550;
 
 // 컨트롤 ID
 const ID_AUTO_ENABLED: i32 = 1001;
@@ -48,6 +50,8 @@ const ID_HIDE_PSEUDO: i32 = 1022;
 const ID_VIEW_FLAT: i32 = 1023;
 const ID_REFRESH_MS: i32 = 1024;
 const ID_TOPN: i32 = 1025;
+const ID_HOTKEY: i32 = 1026;
+const ID_LANG: i32 = 1027;
 const ID_SAVE: i32 = 1030;
 const ID_CANCEL: i32 = 1031;
 const ID_RESET: i32 = 1032;
@@ -85,7 +89,7 @@ pub fn run() -> u32 {
         let Ok(hwnd) = CreateWindowExW(
             WINDOW_EX_STYLE(0),
             CLASS,
-            w!("Nexa MemKeeper — 설정"),
+            tw!("Nexa MemKeeper — Settings"),
             style,
             x,
             y,
@@ -224,6 +228,157 @@ unsafe fn number(parent: HWND, id: i32, x: i32, y: i32, w: i32, font: HFONT) {
     }
 }
 
+// 공용 컨트롤 hotkey 클래스 메시지(commctrl.h) — windows crate 미노출이라 상수로 선언.
+const HKM_SETHOTKEY: u32 = 0x0400 + 1;
+const HKM_GETHOTKEY: u32 = 0x0400 + 2;
+const HOTKEYF_SHIFT: u32 = 0x01;
+const HOTKEYF_CONTROL: u32 = 0x02;
+const HOTKEYF_ALT: u32 = 0x04;
+
+/// 전역 핫키 입력 칸(M4-2) — 사용자가 조합을 **직접 눌러** 지정한다(문자열 타이핑보다 오류가 적다).
+unsafe fn hotkey_field(parent: HWND, id: i32, x: i32, y: i32, w: i32, font: HFONT) {
+    if let Ok(h) = CreateWindowExW(
+        WS_EX_CLIENTEDGE,
+        w!("msctls_hotkey32"),
+        w!(""),
+        WINDOW_STYLE(WS_CHILD.0 | WS_VISIBLE.0 | WS_TABSTOP.0 | WS_BORDER.0),
+        x,
+        y,
+        w,
+        22,
+        Some(parent),
+        Some(HMENU(id as isize as *mut _)),
+        None,
+        None,
+    ) {
+        SendMessageW(
+            h,
+            WM_SETFONT,
+            Some(WPARAM(font.0 as usize)),
+            Some(LPARAM(1)),
+        );
+    }
+}
+
+/// 설정 문자열 → 핫키 칸 표시.
+unsafe fn set_hotkey(hwnd: HWND, id: i32, text: &str) {
+    let Some(ctl) = get_ctl(hwnd, id) else { return };
+    let (vk, mods) = match mk_core::parse_hotkey(text) {
+        Some(hk) => {
+            let mut m = 0u32;
+            if hk.shift {
+                m |= HOTKEYF_SHIFT;
+            }
+            if hk.ctrl {
+                m |= HOTKEYF_CONTROL;
+            }
+            if hk.alt {
+                m |= HOTKEYF_ALT;
+            }
+            (hk.vk, m)
+        }
+        None => (0, 0),
+    };
+    SendMessageW(
+        ctl,
+        HKM_SETHOTKEY,
+        Some(WPARAM(((vk & 0xFF) | ((mods & 0xFF) << 8)) as usize)),
+        Some(LPARAM(0)),
+    );
+}
+
+/// 핫키 칸 → 설정 문자열(`Ctrl+Alt+M`). 조합이 없거나 수정자가 없으면 빈 문자열.
+unsafe fn get_hotkey(hwnd: HWND, id: i32) -> String {
+    let Some(ctl) = get_ctl(hwnd, id) else {
+        return String::new();
+    };
+    let r = SendMessageW(ctl, HKM_GETHOTKEY, Some(WPARAM(0)), Some(LPARAM(0))).0 as u32;
+    let (vk, mods) = (r & 0xFF, (r >> 8) & 0xFF);
+    if vk == 0 {
+        return String::new();
+    }
+    let hk = mk_core::Hotkey {
+        ctrl: mods & HOTKEYF_CONTROL != 0,
+        alt: mods & HOTKEYF_ALT != 0,
+        shift: mods & HOTKEYF_SHIFT != 0,
+        win: false, // hotkey 컨트롤은 Win 키를 수정자로 주지 않는다
+        vk,
+    };
+    mk_core::hotkey_to_string(&hk)
+}
+
+unsafe fn get_ctl(hwnd: HWND, id: i32) -> Option<HWND> {
+    let h = GetDlgItem(Some(hwnd), id).ok()?;
+    (!h.is_invalid()).then_some(h)
+}
+
+// 콤보 박스 메시지(commctrl/winuser) — 표준 컨트롤이라 상수만 필요하다.
+const CB_ADDSTRING: u32 = 0x0143;
+const CB_SETCURSEL: u32 = 0x014E;
+const CB_GETCURSEL: u32 = 0x0147;
+/// 콤보 항목 순서 = 설정 값(auto/en/ko).
+const LANGS: [&str; 3] = ["auto", "en", "ko"];
+
+/// 언어 선택 콤보(i18n) — 기본은 `auto`(OS 언어, 한국어가 아니면 영어).
+unsafe fn lang_combo(parent: HWND, id: i32, x: i32, y: i32, w: i32, font: HFONT) {
+    let Ok(h) = CreateWindowExW(
+        WINDOW_EX_STYLE(0),
+        w!("COMBOBOX"),
+        w!(""),
+        WINDOW_STYLE(
+            WS_CHILD.0 | WS_VISIBLE.0 | WS_TABSTOP.0 | CBS_DROPDOWNLIST as u32 | WS_VSCROLL.0,
+        ),
+        x,
+        y,
+        w,
+        160, // 목록 펼침 높이 포함
+        Some(parent),
+        Some(HMENU(id as isize as *mut _)),
+        None,
+        None,
+    ) else {
+        return;
+    };
+    SendMessageW(
+        h,
+        WM_SETFONT,
+        Some(WPARAM(font.0 as usize)),
+        Some(LPARAM(1)),
+    );
+    for label in ["Auto (system)", "English", "Korean"] {
+        let buf: Vec<u16> = mk_core::tr(label)
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        SendMessageW(
+            h,
+            CB_ADDSTRING,
+            Some(WPARAM(0)),
+            Some(LPARAM(buf.as_ptr() as isize)),
+        );
+    }
+}
+
+unsafe fn set_lang_combo(hwnd: HWND, id: i32, value: &str) {
+    let Some(ctl) = get_ctl(hwnd, id) else { return };
+    let idx = LANGS
+        .iter()
+        .position(|v| v.eq_ignore_ascii_case(value.trim()))
+        .unwrap_or(0);
+    SendMessageW(ctl, CB_SETCURSEL, Some(WPARAM(idx)), Some(LPARAM(0)));
+}
+
+unsafe fn get_lang_combo(hwnd: HWND, id: i32) -> String {
+    let Some(ctl) = get_ctl(hwnd, id) else {
+        return "auto".into();
+    };
+    let idx = SendMessageW(ctl, CB_GETCURSEL, Some(WPARAM(0)), Some(LPARAM(0))).0;
+    LANGS
+        .get(idx.max(0) as usize)
+        .unwrap_or(&"auto")
+        .to_string()
+}
+
 /// (x, y, 폭, 기본 버튼 여부) — 인자 수를 줄이기 위한 묶음.
 struct BtnSpec(i32, i32, i32, bool);
 
@@ -264,9 +419,17 @@ unsafe fn get_check(hwnd: HWND, id: i32) -> bool {
 unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
     match msg {
         WM_CREATE => {
+            // hotkey 컨트롤 클래스 등록(공용 컨트롤) — 없으면 칸이 생성되지 않는다
+            let icc = INITCOMMONCONTROLSEX {
+                dwSize: std::mem::size_of::<INITCOMMONCONTROLSEX>() as u32,
+                dwICC: ICC_HOTKEY_CLASS,
+            };
+            let _ = InitCommonControlsEx(&icc);
+            // 설정을 먼저 읽어 UI 언어를 확정한 뒤 컨트롤을 만든다(문구가 섞이지 않게)
+            let cfg = crate::config::load();
             let font = HFONT(GetStockObject(DEFAULT_GUI_FONT).0);
             build_ui(hwnd, font);
-            load_into_ui(hwnd, &crate::config::load());
+            load_into_ui(hwnd, &cfg);
             LRESULT(0)
         }
         WM_COMMAND => {
@@ -301,35 +464,42 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
     const NUM_X: i32 = 232;
     const NUM_W: i32 = 96;
     // ── 자동 정리
-    group(hwnd, w!("자동 정리"), x, 10, gw, 128, font);
+    group(hwnd, tw!("Automatic Cleanup"), x, 10, gw, 128, font);
     checkbox(
         hwnd,
-        w!("메모리 사용률이 임계값을 넘으면 자동 정리"),
+        tw!("Clean automatically when memory usage exceeds the threshold"),
         ID_AUTO_ENABLED,
         x + 14,
         32,
         gw - 30,
         font,
     );
-    label(hwnd, w!("임계값 (%, 50~95)"), x + 14, 60, LBL_W, font);
+    label(hwnd, tw!("Threshold (%, 50~95)"), x + 14, 60, LBL_W, font);
     number(hwnd, ID_THRESHOLD, x + NUM_X, 57, NUM_W, font);
     label(
         hwnd,
-        w!("최소 간격 (ms, 60000~1800000)"),
+        tw!("Min interval (ms, 60000~1800000)"),
         x + 14,
         86,
         LBL_W,
         font,
     );
     number(hwnd, ID_COOLDOWN, x + NUM_X, 83, NUM_W, font);
-    label(hwnd, w!("주기 정리 (ms, 0=끔)"), x + 14, 112, LBL_W, font);
+    label(
+        hwnd,
+        tw!("Periodic cleanup (ms, 0=off)"),
+        x + 14,
+        112,
+        LBL_W,
+        font,
+    );
     number(hwnd, ID_INTERVAL, x + NUM_X, 109, NUM_W, font);
 
     // ── 정리 영역
-    group(hwnd, w!("정리 영역"), x, 148, gw, 178, font);
+    group(hwnd, tw!("Cleanup Areas"), x, 148, gw, 178, font);
     checkbox(
         hwnd,
-        w!("① 프로세스 워킹셋 트림 (안전)"),
+        tw!("(1) Process working set trim (safe)"),
         ID_A_WS,
         x + 14,
         170,
@@ -338,7 +508,7 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
     );
     checkbox(
         hwnd,
-        w!("② 우선순위 0 스탠바이 퍼지 (안전)"),
+        tw!("(2) Low-priority standby purge (safe)"),
         ID_A_SBLOW,
         x + 14,
         192,
@@ -347,7 +517,7 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
     );
     checkbox(
         hwnd,
-        w!("③ 전체 스탠바이 퍼지 — 파일 캐시 소실"),
+        tw!("(3) Full standby purge — file cache lost"),
         ID_A_SBALL,
         x + 14,
         214,
@@ -356,7 +526,7 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
     );
     checkbox(
         hwnd,
-        w!("④ 수정 페이지 플러시 — 디스크 쓰기"),
+        tw!("(4) Flush modified pages — disk writes"),
         ID_A_MOD,
         x + 14,
         236,
@@ -365,7 +535,7 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
     );
     checkbox(
         hwnd,
-        w!("⑤ 시스템 워킹셋 — 캐시 재적재 비용"),
+        tw!("(5) System working set — cache reload cost"),
         ID_A_SYSWS,
         x + 14,
         258,
@@ -374,7 +544,7 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
     );
     checkbox(
         hwnd,
-        w!("⑥ 페이지 결합 — 느림 (M5 예정)"),
+        tw!("(6) Page combining — slow (planned)"),
         ID_A_COMBINE,
         x + 14,
         280,
@@ -383,7 +553,7 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
     );
     label(
         hwnd,
-        w!("③~⑥은 관리자 권한이 필요하고 일시적 체감 저하가 있을 수 있습니다."),
+        tw!("(3)~(6) need administrator rights and may cause a brief slowdown."),
         x + 14,
         302,
         gw - 30,
@@ -391,10 +561,10 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
     );
 
     // ── 일반
-    group(hwnd, w!("일반"), x, 336, gw, 150, font);
+    group(hwnd, tw!("General"), x, 336, gw, 202, font);
     label(
         hwnd,
-        w!("관찰 주기 (ms, 2000~30000)"),
+        tw!("Poll interval (ms, 2000~30000)"),
         x + 14,
         360,
         LBL_W,
@@ -403,7 +573,7 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
     number(hwnd, ID_POLL, x + NUM_X, 357, NUM_W, font);
     label(
         hwnd,
-        w!("목록 갱신 (ms, 500~10000)"),
+        tw!("List refresh (ms, 500~10000)"),
         x + 14,
         386,
         LBL_W,
@@ -414,7 +584,7 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
     number(hwnd, ID_TOPN, x + NUM_X, 409, NUM_W, font);
     checkbox(
         hwnd,
-        w!("정리 결과 알림"),
+        tw!("Notify on cleanup"),
         ID_NOTIFY,
         x + 14,
         436,
@@ -423,7 +593,7 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
     );
     checkbox(
         hwnd,
-        w!("의사 프로세스 숨김"),
+        tw!("Hide pseudo processes"),
         ID_HIDE_PSEUDO,
         x + 210,
         436,
@@ -432,32 +602,45 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
     );
     checkbox(
         hwnd,
-        w!("목록 기본 = 평면(트리 아님)"),
+        tw!("List defaults to flat (not tree)"),
         ID_VIEW_FLAT,
         x + 14,
         458,
         300,
         font,
     );
+    // 전역 핫키(M4-2) — 공용 컨트롤의 hotkey 클래스가 조합 입력·표시를 대신 처리한다.
+    label(
+        hwnd,
+        tw!("Global hotkey (Clean Now)"),
+        x + 14,
+        484,
+        LBL_W,
+        font,
+    );
+    hotkey_field(hwnd, ID_HOTKEY, x + NUM_X, 481, 140, font);
+    // 언어(i18n) — 기본 auto(OS 언어). 바꾸면 재시작 안내를 띄운다.
+    label(hwnd, tw!("Language"), x + 14, 510, LBL_W, font);
+    lang_combo(hwnd, ID_LANG, x + NUM_X, 507, 140, font);
 
     // ── 버튼
     button(
         hwnd,
-        w!("기본값"),
+        tw!("Defaults"),
         ID_RESET,
         BtnSpec(x, BTN_Y, 92, false),
         font,
     );
     button(
         hwnd,
-        w!("저장"),
+        tw!("Save"),
         ID_SAVE,
         BtnSpec(W - 202, BTN_Y, 92, true),
         font,
     );
     button(
         hwnd,
-        w!("취소"),
+        tw!("Cancel"),
         ID_CANCEL,
         BtnSpec(W - 106, BTN_Y, 92, false),
         font,
@@ -481,6 +664,8 @@ unsafe fn load_into_ui(hwnd: HWND, s: &Settings) {
     set_check(hwnd, ID_NOTIFY, s.notify);
     set_check(hwnd, ID_HIDE_PSEUDO, s.hide_pseudo);
     set_check(hwnd, ID_VIEW_FLAT, s.view_flat);
+    set_hotkey(hwnd, ID_HOTKEY, &s.hotkey_clean);
+    set_lang_combo(hwnd, ID_LANG, &s.lang);
 }
 
 /// UI → 설정 저장. 값 검증(클램프·모순 해소)은 mk-core `normalize`가 한다.
@@ -503,13 +688,17 @@ unsafe fn save_from_ui(hwnd: HWND) -> bool {
     s.notify = get_check(hwnd, ID_NOTIFY);
     s.hide_pseudo = get_check(hwnd, ID_HIDE_PSEUDO);
     s.view_flat = get_check(hwnd, ID_VIEW_FLAT);
+    s.hotkey_clean = get_hotkey(hwnd, ID_HOTKEY);
+    let prev_lang = s.lang.clone();
+    s.lang = get_lang_combo(hwnd, ID_LANG);
+    let lang_changed = prev_lang != s.lang;
     s.normalize();
 
     if !s.areas.any() {
         let _ = MessageBoxW(
             Some(hwnd),
-            w!("정리 영역이 하나도 선택되지 않았습니다.\n최소 하나는 켜야 정리가 동작합니다."),
-            w!("설정 확인"),
+            tw!("No cleanup area is selected.\nTurn on at least one for cleanup to work."),
+            tw!("Check settings"),
             MB_OK | MB_ICONWARNING,
         );
         return false;
@@ -517,14 +706,31 @@ unsafe fn save_from_ui(hwnd: HWND) -> bool {
     if !crate::config::save(&s) {
         let _ = MessageBoxW(
             Some(hwnd),
-            w!("설정을 저장하지 못했습니다.\n쓰기 권한을 확인해 주세요."),
-            w!("저장 실패"),
+            tw!("Could not save settings.\nCheck write permission."),
+            tw!("Save failed"),
             MB_OK | MB_ICONWARNING,
         );
         return false;
     }
     // 상주 셸에 즉시 반영 요청(설정 창은 워커 프로세스이므로 창 메시지로 알린다)
     crate::shell::notify_settings_changed();
+    if lang_changed {
+        // 이미 만들어진 컨트롤·메뉴 문구는 다시 만들지 않는다 — 재시작이 가장 확실하다
+        let title: Vec<u16> = tr("Language")
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let body: Vec<u16> = tr("Restart the app to apply the language change.")
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        MessageBoxW(
+            Some(hwnd),
+            PCWSTR(body.as_ptr()),
+            PCWSTR(title.as_ptr()),
+            MB_OK | MB_ICONINFORMATION,
+        );
+    }
     true
 }
 

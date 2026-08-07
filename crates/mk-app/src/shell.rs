@@ -20,6 +20,10 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::ProcessStatus::K32EmptyWorkingSet;
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    RegisterHotKey, UnregisterHotKey, HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT,
+    MOD_SHIFT, MOD_WIN,
+};
 use windows::Win32::UI::Shell::{
     ShellExecuteW, Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_TIP, NIIF_ERROR,
     NIIF_INFO, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
@@ -31,8 +35,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     RegisterWindowMessageW, SetForegroundWindow, SetTimer, TrackPopupMenu, HICON, ICONINFO,
     MF_GRAYED, MF_SEPARATOR, MF_STRING, MSG, SM_CXSMICON, SM_CYSMICON, SW_SHOWNORMAL,
     TPM_BOTTOMALIGN, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WM_APP,
-    WM_CONTEXTMENU, WM_CREATE, WM_DESTROY, WM_LBUTTONUP, WM_RBUTTONUP, WM_TIMER, WNDCLASSW,
-    WS_OVERLAPPED,
+    WM_CONTEXTMENU, WM_CREATE, WM_DESTROY, WM_HOTKEY, WM_LBUTTONUP, WM_RBUTTONUP, WM_TIMER,
+    WNDCLASSW, WS_OVERLAPPED,
 };
 
 const CLASS: PCWSTR = w!("NexaMemKeeperShell");
@@ -66,7 +70,12 @@ thread_local! {
     static CLEAN_BUSY: Cell<bool> = const { Cell::new(false) };
     /// 마지막 정리(시각, 회수 MB) — 툴팁 둘째 줄.
     static LAST_CLEAN: Cell<Option<(Instant, u32)>> = const { Cell::new(None) };
+    /// 전역 핫키 등록 여부(M4-2) — 재설정 전 해제해야 하므로 상태를 들고 있는다.
+    static HOTKEY_ON: Cell<bool> = const { Cell::new(false) };
 }
+
+/// 전역 핫키 ID(이 창에서 유일하면 된다).
+const HOTKEY_ID: i32 = 1;
 
 /// 상주 셸 진입 — 숨김 호스트 창 생성 후 메시지 루프(종료 메뉴 선택까지 블록).
 pub fn run() -> windows::core::Result<()> {
@@ -161,8 +170,15 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
             tray_update(hwnd);
             LRESULT(0)
         }
+        WM_HOTKEY => {
+            spawn_clean(hwnd); // 전역 핫키 = '지금 정리'(M4-2)
+            LRESULT(0)
+        }
         WM_DESTROY => {
             let _ = KillTimer(Some(hwnd), TIMER_POLL);
+            if HOTKEY_ON.replace(false) {
+                let _ = UnregisterHotKey(Some(hwnd), HOTKEY_ID);
+            }
             let nid = base_nid(hwnd);
             let _ = Shell_NotifyIconW(NIM_DELETE, &nid);
             drop_icon();
@@ -242,12 +258,54 @@ unsafe fn notify_balloon(hwnd: HWND, title: &str, body: &str, ok: bool) {
     let _ = Shell_NotifyIconW(NIM_MODIFY, &nid);
 }
 
-/// 설정 로드 + 즉시 반영(폴링 타이머 재설정). 시작 시와 설정 저장 후에 호출.
+/// 설정 로드 + 즉시 반영(폴링 타이머·전역 핫키 재설정). 시작 시와 설정 저장 후에 호출.
 unsafe fn apply_settings(hwnd: HWND) {
     let s = crate::config::load();
     let poll_ms = s.poll_ms;
+    let hotkey = mk_core::parse_hotkey(&s.hotkey_clean);
     SETTINGS.with(|c| *c.borrow_mut() = s);
     SetTimer(Some(hwnd), TIMER_POLL, poll_ms, None); // 같은 ID 재설정 = 주기 교체
+    apply_hotkey(hwnd, hotkey);
+}
+
+/// 전역 핫키 재등록(M4-2). 기존 등록은 항상 먼저 해제한다 — 설정을 바꿀 때마다 쌓이면 안 된다.
+/// 다른 앱이 이미 쓰는 조합이면 등록이 실패하는데, **조용히 넘기지 않고** 사용자에게 알린다.
+unsafe fn apply_hotkey(hwnd: HWND, hk: Option<mk_core::Hotkey>) {
+    if HOTKEY_ON.replace(false) {
+        let _ = UnregisterHotKey(Some(hwnd), HOTKEY_ID);
+    }
+    let Some(hk) = hk else { return };
+    let mut mods = HOT_KEY_MODIFIERS(0);
+    if hk.ctrl {
+        mods |= MOD_CONTROL;
+    }
+    if hk.alt {
+        mods |= MOD_ALT;
+    }
+    if hk.shift {
+        mods |= MOD_SHIFT;
+    }
+    if hk.win {
+        mods |= MOD_WIN;
+    }
+    // MOD_NOREPEAT: 누르고 있어도 1회만(정리가 연속 실행되지 않게)
+    match RegisterHotKey(Some(hwnd), HOTKEY_ID, mods | MOD_NOREPEAT, hk.vk) {
+        Ok(()) => {
+            HOTKEY_ON.set(true);
+            if cfg!(debug_assertions) {
+                eprintln!("shell: 핫키 등록 성공 — {}", mk_core::hotkey_to_string(&hk));
+            }
+        }
+        Err(_) => {
+            let text = mk_core::hotkey_to_string(&hk);
+            notify_balloon(
+                hwnd,
+                "핫키 등록 실패",
+                &format!("{text} 조합은 다른 프로그램이 사용 중입니다.\n설정에서 다른 조합을 지정해 주세요."),
+                false,
+            );
+        }
+    }
 }
 
 /// 자동 정리 판정(FR-4) — 임계값·쿨다운·주기는 mk-core가 판단한다.
@@ -547,19 +605,19 @@ unsafe fn show_menu(hwnd: HWND) {
     } else {
         MF_STRING
     };
-    let _ = AppendMenuW(menu, clean_flags, CMD_CLEAN, w!("지금 정리(&C)"));
-    let _ = AppendMenuW(menu, MF_STRING, CMD_LIST, w!("목록 보기(&L)…"));
-    let _ = AppendMenuW(menu, MF_STRING, CMD_SETTINGS, w!("설정(&S)…"));
+    let _ = AppendMenuW(menu, clean_flags, CMD_CLEAN, tw!("Clean Now(&C)"));
+    let _ = AppendMenuW(menu, MF_STRING, CMD_LIST, tw!("Show List(&L)…"));
+    let _ = AppendMenuW(menu, MF_STRING, CMD_SETTINGS, tw!("Settings(&S)…"));
     if !is_elevated() {
         let _ = AppendMenuW(
             menu,
             MF_STRING,
             CMD_ELEVATE,
-            w!("관리자 권한으로 재시작(&A)…"),
+            tw!("Restart as Administrator(&A)…"),
         );
     }
     let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
-    let _ = AppendMenuW(menu, MF_STRING, CMD_EXIT, w!("종료(&X)"));
+    let _ = AppendMenuW(menu, MF_STRING, CMD_EXIT, tw!("Exit(&X)"));
     let mut pt = POINT::default();
     let _ = GetCursorPos(&mut pt);
     // TrackPopupMenu 규칙: 포그라운드 창이어야 메뉴 밖 클릭 시 닫힌다

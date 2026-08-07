@@ -58,11 +58,28 @@ fn can_write(path: &std::path::Path) -> bool {
 }
 
 /// 설정 로드 — 파일이 없거나 읽기 실패면 기본값(첫 실행 정상 경로).
+/// 로드할 때마다 **UI 언어도 함께 적용**한다(프로세스마다 각자 설정을 읽으므로 여기가 유일한 관문).
 pub fn load() -> Settings {
-    match std::fs::read_to_string(settings_path()) {
+    let s = match std::fs::read_to_string(settings_path()) {
         Ok(text) => Settings::parse(&text),
         Err(_) => Settings::default(),
-    }
+    };
+    apply_lang(&s.lang);
+    s
+}
+
+/// 설정 문자열 → UI 언어. `auto`(기본)면 **OS UI 언어**를 따르되 한국어가 아니면 영어.
+fn apply_lang(setting: &str) {
+    let lang = mk_core::lang_from_setting(setting).unwrap_or_else(|| {
+        // 0x0412 = ko-KR. 하위 워드의 기본 언어 ID만 본다.
+        let ui = unsafe { windows::Win32::Globalization::GetUserDefaultUILanguage() };
+        if ui & 0x3FF == 0x12 {
+            mk_core::Lang::Ko
+        } else {
+            mk_core::Lang::En
+        }
+    });
+    mk_core::set_lang(lang);
 }
 
 /// 설정 저장 — 디렉터리 생성 포함. 실패 시 false(호출자가 사용자에게 알린다).
