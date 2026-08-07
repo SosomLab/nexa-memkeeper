@@ -50,6 +50,10 @@ const WM_ITEM_DONE: u32 = WM_APP + 3;
 const WM_SETTINGS_CHANGED: u32 = WM_APP + 4;
 const TRAY_ID: u32 = 1;
 const TIMER_POLL: usize = 1;
+/// 풍선 알림 자동 닫기 타이머(사용자 QA 08-07 — 닫기 전까지 계속 남아 있었다).
+const TIMER_BALLOON: usize = 2;
+/// 알림이 화면에 머무는 시간(ms). Windows 10/11은 `uTimeout`을 무시하므로 직접 지운다.
+const BALLOON_MS: u32 = 6_000;
 const CMD_EXIT: usize = 100;
 const CMD_CLEAN: usize = 101;
 const CMD_ELEVATE: usize = 102;
@@ -122,8 +126,12 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
             LRESULT(0)
         }
         WM_TIMER => {
-            tray_update(hwnd);
-            auto_clean_if_due(hwnd);
+            if wp.0 == TIMER_BALLOON {
+                dismiss_balloon(hwnd);
+            } else {
+                tray_update(hwnd);
+                auto_clean_if_due(hwnd);
+            }
             LRESULT(0)
         }
         WM_SETTINGS_CHANGED => {
@@ -176,6 +184,7 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
         }
         WM_DESTROY => {
             let _ = KillTimer(Some(hwnd), TIMER_POLL);
+            let _ = KillTimer(Some(hwnd), TIMER_BALLOON);
             if HOTKEY_ON.replace(false) {
                 let _ = UnregisterHotKey(Some(hwnd), HOTKEY_ID);
             }
@@ -255,6 +264,17 @@ unsafe fn notify_balloon(hwnd: HWND, title: &str, body: &str, ok: bool) {
     let b: Vec<u16> = body.encode_utf16().collect();
     let n = b.len().min(nid.szInfo.len() - 1);
     nid.szInfo[..n].copy_from_slice(&b[..n]);
+    let _ = Shell_NotifyIconW(NIM_MODIFY, &nid);
+    // 지정 시간 뒤 스스로 내린다 — Windows 10/11은 `uTimeout`을 무시해서 배너가 닫기 전까지
+    // 남아 있었다(08-07 사용자 QA). 빈 정보 텍스트로 갱신하는 것이 확실한 제거 방법이다.
+    SetTimer(Some(hwnd), TIMER_BALLOON, BALLOON_MS, None);
+}
+
+/// 표시 중인 풍선 알림 내리기(빈 `szInfo`로 갱신 = 배너 제거).
+unsafe fn dismiss_balloon(hwnd: HWND) {
+    let _ = KillTimer(Some(hwnd), TIMER_BALLOON);
+    let mut nid = base_nid(hwnd);
+    nid.uFlags = NIF_INFO; // szInfo·szInfoTitle 모두 빈 상태
     let _ = Shell_NotifyIconW(NIM_MODIFY, &nid);
 }
 

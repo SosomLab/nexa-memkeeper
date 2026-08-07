@@ -117,11 +117,18 @@ pub struct ProcInfo {
     /// 부모 PID(트리 구성용). 0 또는 목록에 없는 값이면 최상위로 취급.
     pub ppid: u32,
     pub name: String,
+    /// 사람이 읽는 이름 — exe 버전 정보의 `FileDescription`(작업 관리자가 쓰는 값).
+    /// 없으면 `name`과 같다. 수집은 mk-app(경로별 캐시).
+    pub display_name: String,
     /// 프라이빗 워킹셋(바이트) — Top N 정렬 기본 지표(docs/19 §2-2).
     pub private_ws: u64,
     pub ws: u64,
     pub threads: u32,
     pub thread_list: Vec<ThreadInfo>,
+    /// 터미널 세션 ID. 0 = 서비스·시스템 구성 요소(작업 관리자의 "Windows 프로세스" 판정에 쓴다).
+    pub session_id: u32,
+    /// 보이는 최상위 창 제목들(있으면 "앱"으로 분류). 작업 관리자처럼 앱 아래 자식으로 보여준다.
+    pub window_titles: Vec<String>,
 }
 
 /// 쓰레드 상태 표시 문자열(NT `KTHREAD_STATE`).
@@ -143,6 +150,12 @@ pub fn thread_state_name(state: u32) -> &'static str {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RowKind {
+    /// 분류 머리글(앱 / 백그라운드 / Windows) — 선택·조작 대상이 아니다.
+    Category,
+    /// 같은 실행 파일 묶음(작업 관리자의 `Chrome(12)` 형태).
+    Group,
+    /// 앱이 띄운 창 — 작업 관리자에서 앱 아래에 붙는 자식 행.
+    Window,
     Process,
     Thread,
 }
@@ -232,7 +245,7 @@ pub fn build_rows(
             depth,
             pid: p.pid,
             tid: 0,
-            label: p.name.clone(),
+            label: p.display_name.clone(),
             private_ws: p.private_ws,
             ws: p.ws,
             threads: p.threads,
@@ -291,6 +304,291 @@ pub fn build_rows(
     out
 }
 
+// ---- 작업 관리자식 분류·묶음 (사용자 확정 08-07 — 기본 보기) ----
+
+/// 목록 최상위 분류. 작업 관리자의 3구획과 같은 기준으로 나눈다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Category {
+    /// 보이는 창을 가진 프로그램.
+    Apps,
+    /// 창 없이 사용자 세션에서 도는 것.
+    Background,
+    /// 세션 0(서비스·시스템 구성 요소)과 커널 의사 프로세스.
+    Windows,
+}
+
+impl Category {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Category::Apps => "Apps",
+            Category::Background => "Background processes",
+            Category::Windows => "Windows processes",
+        }
+    }
+}
+
+/// 프로세스 → 분류. 작업 관리자와 같은 기준: 보이는 창이 있으면 앱, 세션 0이면 Windows, 나머지는 백그라운드.
+pub fn categorize(p: &ProcInfo) -> Category {
+    if !p.window_titles.is_empty() {
+        Category::Apps
+    } else if p.session_id == 0 || is_pseudo(&p.name) || p.pid <= 4 {
+        Category::Windows
+    } else {
+        Category::Background
+    }
+}
+
+/// **셸**(바탕화면·시작프로그램을 대신 띄우는 프로세스)은 자식을 거느린 것으로 보지 않는다.
+///
+/// `explorer.exe`는 시작프로그램·바탕화면에서 실행한 모든 것의 부모가 되므로, 자식을 앱 아래로
+/// 넣으면 작업 관리자와 달리 무관한 프로그램(예: `espansod.exe`)이 탐색기 밑으로 들어간다.
+/// 작업 관리자도 셸의 자식은 별개 항목으로 보여준다(사용자 확인 08-07).
+fn is_shell_host(p: &ProcInfo) -> bool {
+    p.name.eq_ignore_ascii_case("explorer.exe")
+}
+
+/// 앱 항목이 흡수하는 자손 프로세스들(작업 관리자의 `터미널(3)` 형태).
+///
+/// 창을 가진 자손은 그 자신이 앱 항목이 되므로 제외하고, 셸은 아무것도 거느리지 않는다.
+fn owned_children(procs: &[ProcInfo], idx: usize) -> Vec<usize> {
+    if is_shell_host(&procs[idx]) {
+        return Vec::new();
+    }
+    let kids = descendants(procs, procs[idx].pid);
+    procs
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| kids.contains(&c.pid) && c.window_titles.is_empty())
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// 작업 관리자식 행 구성: **분류 → 프로그램 묶음 → 개별 프로세스 → (옵션) 쓰레드**.
+///
+/// 같은 실행 파일이 여러 개면 하나로 묶어 `이름 (N)`으로 보여주고 메모리를 합산한다(작업 관리자의
+/// `Microsoft Edge(24)`와 같은 형태). 하나뿐이면 묶음 없이 그 프로세스를 바로 보여준다.
+/// `expanded`에는 묶음 키(첫 프로세스 PID)와 프로세스 PID가 함께 들어간다.
+pub fn build_grouped_rows(
+    procs: &[ProcInfo],
+    key: SortKey,
+    asc: bool,
+    expanded: &std::collections::HashSet<u32>,
+    show_threads: bool,
+) -> Vec<Row> {
+    use std::collections::HashMap;
+    // 앱이 거느린 자손은 그 앱 아래에만 둔다 — 백그라운드 구획에 중복 노출 금지
+    let owned: std::collections::HashSet<u32> = procs
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| categorize(p) == Category::Apps)
+        .flat_map(|(i, _)| owned_children(procs, i))
+        .map(|i| procs[i].pid)
+        .collect();
+    let mut by_cat: HashMap<Category, HashMap<String, Vec<usize>>> = HashMap::new();
+    for (i, p) in procs.iter().enumerate() {
+        if owned.contains(&p.pid) && categorize(p) != Category::Apps {
+            continue; // 앱 하위로 이동
+        }
+        by_cat
+            .entry(categorize(p))
+            .or_default()
+            .entry(p.display_name.to_ascii_lowercase())
+            .or_default()
+            .push(i);
+    }
+
+    let metric = |p: &ProcInfo| -> u64 {
+        match key {
+            SortKey::PrivateWs => p.private_ws,
+            SortKey::Ws => p.ws,
+            SortKey::Threads => p.threads as u64,
+            SortKey::Pid => p.pid as u64,
+            SortKey::Name => 0,
+        }
+    };
+
+    let mut out = Vec::with_capacity(procs.len() + 8);
+    for cat in [Category::Apps, Category::Background, Category::Windows] {
+        let Some(groups) = by_cat.get(&cat) else {
+            continue;
+        };
+        let count: usize = groups.values().map(|v| v.len()).sum();
+        out.push(Row {
+            kind: RowKind::Category,
+            depth: 0,
+            pid: 0,
+            tid: 0,
+            label: format!("{} ({})", cat.label(), count),
+            private_ws: groups
+                .values()
+                .flatten()
+                .map(|&i| procs[i].private_ws)
+                .sum(),
+            ws: groups.values().flatten().map(|&i| procs[i].ws).sum(),
+            threads: 0,
+            expandable: false,
+            expanded: true,
+        });
+
+        // 묶음 정렬 — 이름은 사전순, 나머지는 합산값 기준
+        let mut keys: Vec<&String> = groups.keys().collect();
+        keys.sort_by(|a, b| {
+            let (ga, gb) = (&groups[*a], &groups[*b]);
+            let ord = match key {
+                SortKey::Name => a.cmp(b),
+                _ => {
+                    let sa: u64 = ga.iter().map(|&i| metric(&procs[i])).sum();
+                    let sb: u64 = gb.iter().map(|&i| metric(&procs[i])).sum();
+                    sa.cmp(&sb)
+                }
+            };
+            if asc { ord } else { ord.reverse() }.then(a.cmp(b))
+        });
+
+        for k in keys {
+            let members = &groups[k];
+            let first = &procs[members[0]];
+
+            // 앱 구획은 **프로그램 행 + 창 + 도우미 프로세스** 구조(작업 관리자와 동일).
+            // 작업 관리자의 `터미널(3)`처럼 앱이 띄운 자손 프로세스도 앱 개수에 포함한다.
+            if cat == Category::Apps {
+                let wins: Vec<(u32, &String)> = members
+                    .iter()
+                    .flat_map(|&i| {
+                        procs[i]
+                            .window_titles
+                            .iter()
+                            .map(move |t| (procs[i].pid, t))
+                    })
+                    .collect();
+                let kids: Vec<usize> = members
+                    .iter()
+                    .flat_map(|&m| owned_children(procs, m))
+                    .filter(|i| !members.contains(i))
+                    .collect();
+                let gid = members.iter().map(|&i| procs[i].pid).min().unwrap_or(0);
+                let total = members.len() + kids.len();
+                let label = if total > 1 {
+                    format!("{} ({})", first.display_name, total)
+                } else {
+                    first.display_name.clone()
+                };
+                let child_rows = wins.len() + kids.len();
+                let is_open = expanded.contains(&gid) || child_rows <= 1;
+                let all = || members.iter().chain(kids.iter());
+                out.push(Row {
+                    kind: RowKind::Group,
+                    depth: 1,
+                    pid: gid,
+                    tid: 0,
+                    label,
+                    private_ws: all().map(|&i| procs[i].private_ws).sum(),
+                    ws: all().map(|&i| procs[i].ws).sum(),
+                    threads: all().map(|&i| procs[i].threads).sum(),
+                    expandable: child_rows > 0,
+                    expanded: is_open,
+                });
+                if is_open {
+                    for (pid, title) in wins {
+                        out.push(Row {
+                            kind: RowKind::Window,
+                            depth: 2,
+                            pid,
+                            tid: 0,
+                            label: title.clone(),
+                            private_ws: 0,
+                            ws: 0,
+                            threads: 0,
+                            expandable: false,
+                            expanded: false,
+                        });
+                    }
+                    let mut ks = kids;
+                    ks.sort_by_key(|&i| std::cmp::Reverse(procs[i].private_ws));
+                    for i in ks {
+                        push_proc(&mut out, &procs[i], 2, expanded, show_threads);
+                    }
+                }
+                continue;
+            }
+
+            if members.len() == 1 {
+                push_proc(&mut out, first, 1, expanded, show_threads);
+                continue;
+            }
+            let gid = members.iter().map(|&i| procs[i].pid).min().unwrap_or(0);
+            let is_open = expanded.contains(&gid);
+            out.push(Row {
+                kind: RowKind::Group,
+                depth: 1,
+                pid: gid,
+                tid: 0,
+                label: format!("{} ({})", first.display_name, members.len()),
+                private_ws: members.iter().map(|&i| procs[i].private_ws).sum(),
+                ws: members.iter().map(|&i| procs[i].ws).sum(),
+                threads: members.iter().map(|&i| procs[i].threads).sum(),
+                expandable: true,
+                expanded: is_open,
+            });
+            if is_open {
+                let mut idx = members.clone();
+                idx.sort_by(|&a, &b| {
+                    let ord = metric(&procs[a]).cmp(&metric(&procs[b]));
+                    if asc { ord } else { ord.reverse() }.then(procs[a].pid.cmp(&procs[b].pid))
+                });
+                for i in idx {
+                    push_proc(&mut out, &procs[i], 2, expanded, show_threads);
+                }
+            }
+        }
+    }
+    out
+}
+
+fn push_proc(
+    out: &mut Vec<Row>,
+    p: &ProcInfo,
+    depth: i32,
+    expanded: &std::collections::HashSet<u32>,
+    show_threads: bool,
+) {
+    let is_open = expanded.contains(&p.pid);
+    let label = p.display_name.clone();
+    out.push(Row {
+        kind: RowKind::Process,
+        depth,
+        pid: p.pid,
+        tid: 0,
+        label,
+        private_ws: p.private_ws,
+        ws: p.ws,
+        threads: p.threads,
+        expandable: show_threads && !p.thread_list.is_empty(),
+        expanded: is_open,
+    });
+    if is_open && show_threads {
+        for t in &p.thread_list {
+            out.push(Row {
+                kind: RowKind::Thread,
+                depth: depth + 1,
+                pid: p.pid,
+                tid: t.tid,
+                label: format!(
+                    "{} {} · {}",
+                    tr("Thread"),
+                    t.tid,
+                    thread_state_name(t.state)
+                ),
+                private_ws: 0,
+                ws: 0,
+                threads: t.context_switches,
+                expandable: false,
+                expanded: false,
+            });
+        }
+    }
+}
+
 /// **평면 목록** — 계층 없이 모든 프로세스를 한 단계로 나열(작업 관리자 "자세히"와 같은 형태).
 /// 트리에서는 부모가 접혀 있으면 자식이 보이지 않아 특정 프로그램을 찾기 어렵다(08-07 사용자 사례:
 /// `NexaMarkdownViewer.exe`가 `explorer.exe` 아래 접혀 있었다) → 기본 보기는 이쪽.
@@ -326,7 +624,7 @@ pub fn build_rows_flat(
             depth: 0,
             pid: p.pid,
             tid: 0,
-            label: p.name.clone(),
+            label: p.display_name.clone(),
             private_ws: p.private_ws,
             ws: p.ws,
             threads: p.threads,
@@ -373,6 +671,76 @@ pub fn filter_procs(procs: Vec<ProcInfo>, query: &str) -> Vec<ProcInfo> {
         .filter(|p| {
             p.name.to_ascii_lowercase().contains(&q) || (numeric && p.pid.to_string().contains(&q))
         })
+        .collect()
+}
+
+/// **묶음 보기 검색 필터** — 이름·PID뿐 아니라 **창 제목**도 찾고, 구조를 유지한다.
+///
+/// 창 제목만 일치하면 그 프로세스를 남기되 **일치한 창만** 자식으로 남긴다. 그래서 `2026`을 찾으면
+/// `Slack.exe`(앱 행) + `2026-… - Slack`(창 행) 두 줄이 나온다(사용자 확정 08-07).
+pub fn filter_grouped(procs: Vec<ProcInfo>, query: &str) -> Vec<ProcInfo> {
+    let q = query.trim().to_ascii_lowercase();
+    if q.is_empty() {
+        return procs;
+    }
+    let numeric = q.chars().all(|c| c.is_ascii_digit());
+    procs
+        .into_iter()
+        .filter_map(|mut p| {
+            let by_name = p.name.to_ascii_lowercase().contains(&q)
+                || p.display_name.to_ascii_lowercase().contains(&q)
+                || (numeric && p.pid.to_string().contains(&q));
+            if by_name {
+                return Some(p);
+            }
+            let hits: Vec<String> = p
+                .window_titles
+                .iter()
+                .filter(|t| t.to_ascii_lowercase().contains(&q))
+                .cloned()
+                .collect();
+            if hits.is_empty() {
+                None
+            } else {
+                p.window_titles = hits; // 일치한 창만 보여준다
+                Some(p)
+            }
+        })
+        .collect()
+}
+
+/// **트리 검색 필터** — 일치한 프로세스와 **그 조상들**만 남겨 계층을 유지한다(사용자 확정 08-07).
+///
+/// - 부모가 일치하면 부모만 남는다(자식은 각자 일치해야 남는다).
+/// - 자식이 일치하면 자식 + 조상 전부가 남아 **구조가 보인다**.
+pub fn filter_tree(procs: Vec<ProcInfo>, query: &str) -> Vec<ProcInfo> {
+    use std::collections::{HashMap, HashSet};
+    let q = query.trim().to_ascii_lowercase();
+    if q.is_empty() {
+        return procs;
+    }
+    let numeric = q.chars().all(|c| c.is_ascii_digit());
+    let parent: HashMap<u32, u32> = procs.iter().map(|p| (p.pid, p.ppid)).collect();
+
+    let mut keep: HashSet<u32> = HashSet::new();
+    for p in &procs {
+        let hit =
+            p.name.to_ascii_lowercase().contains(&q) || (numeric && p.pid.to_string().contains(&q));
+        if !hit {
+            continue;
+        }
+        keep.insert(p.pid);
+        // 조상 추가(순환 대비 방문 검사)
+        let mut cur = p.ppid;
+        let mut guard = 0;
+        while cur != 0 && keep.insert(cur) && guard < 64 {
+            cur = parent.get(&cur).copied().unwrap_or(0);
+            guard += 1;
+        }
+    }
+    procs
+        .into_iter()
+        .filter(|p| keep.contains(&p.pid))
         .collect()
 }
 
@@ -656,10 +1024,13 @@ mod tests {
             pid,
             ppid: 0,
             name: name.to_string(),
+            display_name: name.to_string(),
             private_ws,
             ws: private_ws * 2,
             threads: 1,
             thread_list: Vec::new(),
+            session_id: 1,
+            window_titles: Vec::new(),
         }
     }
 
@@ -668,6 +1039,77 @@ mod tests {
             ppid,
             ..p(pid, name, private_ws)
         }
+    }
+
+    fn app(pid: u32, ppid: u32, name: &str, title: &str) -> ProcInfo {
+        ProcInfo {
+            ppid,
+            window_titles: vec![title.to_string()],
+            ..p(pid, name, 100)
+        }
+    }
+
+    #[test]
+    fn grouped_filter_matches_window_titles() {
+        // 08-07 사용자 확정: 창 제목으로 찾으면 **앱 행 + 일치한 창** 두 줄이 나와야 한다.
+        let procs = vec![
+            app(10, 0, "Slack.exe", "2026-sebang-snop-fp - Slack"),
+            app(11, 0, "Code.exe", "readme.md - Code"),
+        ];
+        let kept = filter_grouped(procs, "2026");
+        assert_eq!(kept.len(), 1, "제목이 걸린 프로세스만 남는다");
+        assert_eq!(kept[0].window_titles.len(), 1, "일치한 창만 남는다");
+
+        let rows = build_grouped_rows(
+            &kept,
+            SortKey::PrivateWs,
+            false,
+            &std::collections::HashSet::new(),
+            false,
+        );
+        let body: Vec<&RowKind> = rows
+            .iter()
+            .map(|r| &r.kind)
+            .filter(|k| **k != RowKind::Category)
+            .collect();
+        assert_eq!(
+            body,
+            vec![&RowKind::Group, &RowKind::Window],
+            "앱 행과 창 행 두 줄"
+        );
+    }
+
+    #[test]
+    fn shell_children_stay_separate() {
+        // 08-07 사용자 확인: 작업 관리자처럼 탐색기(셸)가 띄운 프로그램은 탐색기 밑에 넣지 않는다.
+        // 반대로 일반 앱의 도우미 프로세스는 앱 항목에 합산한다(`터미널(3)` 형태).
+        let procs = vec![
+            app(1, 0, "explorer.exe", "Desktop"),
+            child(2, 1, "espansod.exe", 50),
+            app(3, 0, "WindowsTerminal.exe", "pwsh"),
+            child(4, 3, "OpenConsole.exe", 20),
+            child(5, 4, "pwsh.exe", 30),
+        ];
+        let rows = build_grouped_rows(
+            &procs,
+            SortKey::PrivateWs,
+            false,
+            &std::collections::HashSet::new(),
+            false,
+        );
+        let labels: Vec<&str> = rows.iter().map(|r| r.label.as_str()).collect();
+        assert!(
+            labels.iter().any(|l| l.starts_with("espansod.exe")),
+            "셸의 자식은 따로 보인다: {labels:?}"
+        );
+        assert!(
+            labels.contains(&"WindowsTerminal.exe (3)"),
+            "앱의 도우미 프로세스는 앱 개수에 포함된다: {labels:?}"
+        );
+        assert!(
+            !labels.iter().any(|l| l.starts_with("OpenConsole.exe (")),
+            "도우미는 백그라운드에 중복 노출되지 않는다: {labels:?}"
+        );
     }
 
     #[test]
@@ -857,6 +1299,32 @@ mod tests {
         assert_eq!(filter_procs(procs.clone(), "EXE").len(), 3);
         assert_eq!(filter_procs(procs.clone(), "  ").len(), 3); // 공백만 = 전체
         assert!(filter_procs(procs, "zzz").is_empty());
+    }
+
+    #[test]
+    fn tree_filter_keeps_ancestors() {
+        // 08-07 사용자 확정: 자식이 걸리면 조상까지 남아 구조가 보이고,
+        // 부모가 걸리면 부모만 남는다(자식은 각자 일치해야 남음).
+        let procs = vec![
+            p(1, "explorer.exe", 10),
+            child(2, 1, "app.exe", 20),
+            child(3, 2, "helper.exe", 30),
+            p(9, "other.exe", 40),
+        ];
+        let mut kept: Vec<u32> = filter_tree(procs.clone(), "helper")
+            .iter()
+            .map(|x| x.pid)
+            .collect();
+        kept.sort();
+        assert_eq!(kept, vec![1, 2, 3], "자식이 걸리면 조상까지 남아야 한다");
+
+        let kept: Vec<u32> = filter_tree(procs.clone(), "explorer")
+            .iter()
+            .map(|x| x.pid)
+            .collect();
+        assert_eq!(kept, vec![1], "부모가 걸리면 부모만 남는다");
+
+        assert_eq!(filter_tree(procs, "").len(), 4); // 빈 질의 = 전체
     }
 
     #[test]
