@@ -286,8 +286,13 @@ unsafe fn build_menu(hwnd: HWND) -> HMENU {
 }
 
 /// 메뉴 체크 상태 동기화(자동 실행·의사 프로세스 숨김·보기 모드·갱신 주기).
-unsafe fn sync_menu_checks(menu: HMENU, refresh_ms: u32, hide_pseudo: bool) {
-    let flat = with_state_ret(|st| st.flat).unwrap_or(true);
+/// 메뉴 체크 동기화.
+///
+/// ⚠️ **STATE를 다시 빌리지 않는다** — 호출부 대부분이 `with_state(...)` 안이라, 여기서
+/// `with_state_ret`을 부르면 `RefCell` 이중 대여로 패닉하고 릴리스는 `panic=abort`라
+/// 창이 그대로 사라진다(08-07 사용자 QA: 의사 프로세스 숨김 해제 시 UI 종료).
+/// 필요한 값은 전부 인자로 받는다.
+unsafe fn sync_menu_checks(menu: HMENU, refresh_ms: u32, hide_pseudo: bool, flat: bool) {
     CheckMenuItem(
         menu,
         ID_VIEW_FLAT as u32,
@@ -362,7 +367,7 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                 })
             });
             reload();
-            sync_menu_checks(menu, cfg.list_refresh_ms, cfg.hide_pseudo);
+            sync_menu_checks(menu, cfg.list_refresh_ms, cfg.hide_pseudo, cfg.view_flat);
             SetTimer(Some(hwnd), TIMER_REFRESH, cfg.list_refresh_ms, None);
             sync_scrollbar(hwnd);
             LRESULT(0)
@@ -545,13 +550,13 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
             if !ok {
                 info_box(hwnd, tr("Autorun"), tr("Could not change the setting."));
             }
-            with_state(|st| sync_menu_checks(st.menu, st.refresh_ms, st.hide_pseudo));
+            with_state(|st| sync_menu_checks(st.menu, st.refresh_ms, st.hide_pseudo, st.flat));
         }
         ID_VIEW_FLAT | ID_VIEW_TREE => {
             with_state(|st| {
                 st.flat = id == ID_VIEW_FLAT;
                 rebuild(st);
-                sync_menu_checks(st.menu, st.refresh_ms, st.hide_pseudo);
+                sync_menu_checks(st.menu, st.refresh_ms, st.hide_pseudo, st.flat);
             });
             sync_scrollbar(hwnd);
             let _ = InvalidateRect(Some(hwnd), None, false);
@@ -578,7 +583,7 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
         ID_HIDE_PSEUDO => {
             with_state(|st| {
                 st.hide_pseudo = !st.hide_pseudo;
-                sync_menu_checks(st.menu, st.refresh_ms, st.hide_pseudo);
+                sync_menu_checks(st.menu, st.refresh_ms, st.hide_pseudo, st.flat);
             });
             reload();
             sync_scrollbar(hwnd);
@@ -592,7 +597,7 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
             };
             with_state(|st| {
                 st.refresh_ms = ms;
-                sync_menu_checks(st.menu, ms, st.hide_pseudo);
+                sync_menu_checks(st.menu, ms, st.hide_pseudo, st.flat);
             });
             SetTimer(Some(hwnd), TIMER_REFRESH, ms, None);
         }
