@@ -3,8 +3,14 @@
 //! 회수 영역(docs/07 §3): ① 프로세스 워킹셋 트림 + ② 우선순위 0 스탠바이 퍼지.
 //! 결과 = 종료 코드(mk-core 프로토콜: 회수 MB | PARTIAL 플래그).
 
+use windows::core::BOOL;
 use windows::core::PWSTR;
-use windows::Win32::Foundation::{CloseHandle, HANDLE, LUID};
+use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, LPARAM, LUID, WAIT_OBJECT_0, WPARAM};
+use windows::Win32::System::Threading::PROCESS_ACCESS_RIGHTS;
+
+/// SYNCHRONIZE(0x0010_0000) — 프로세스 종료 대기용. windows crate는 이 상수를
+/// FILE_ACCESS_RIGHTS로만 노출해 타입이 맞지 않으므로 프로세스 권한 타입으로 직접 표기.
+const SYNCHRONIZE: PROCESS_ACCESS_RIGHTS = PROCESS_ACCESS_RIGHTS(0x0010_0000);
 use windows::Win32::Security::{
     AdjustTokenPrivileges, LookupPrivilegeValueW, LUID_AND_ATTRIBUTES, SE_DEBUG_NAME,
     SE_INCREASE_QUOTA_NAME, SE_PRIVILEGE_ENABLED, SE_PROF_SINGLE_PROCESS_NAME,
@@ -14,8 +20,11 @@ use windows::Win32::System::ProcessStatus::{K32EmptyWorkingSet, K32EnumProcesses
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 use windows::Win32::System::Threading::{
     GetCurrentProcess, GetCurrentProcessId, OpenProcess, OpenProcessToken,
-    QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
-    PROCESS_SET_QUOTA,
+    QueryFullProcessImageNameW, TerminateProcess, WaitForSingleObject, PROCESS_NAME_WIN32,
+    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SET_QUOTA, PROCESS_TERMINATE,
+};
+use windows::Win32::UI::WindowsAndMessaging::{
+    EnumWindows, GetWindowThreadProcessId, PostMessageW, WM_CLOSE,
 };
 
 // NtSetSystemInformation은 windows crate 미노출 — ntdll raw-dylib 직접 선언(docs/07 §3).
@@ -136,6 +145,67 @@ unsafe fn is_protected_image(h: HANDLE) -> bool {
     let path = String::from_utf16_lossy(&buf[..len as usize]);
     let name = path.rsplit('\\').next().unwrap_or(&path);
     mk_core::is_protected(name)
+}
+
+/// `--worker trim <pid>` — 단일 프로세스 워킹셋 회수(FR-2). 성공 0 / 실패 1.
+pub fn run_trim(pid: u32) -> u32 {
+    unsafe {
+        enable_privileges();
+        let Ok(h) = OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SET_QUOTA,
+            false,
+            pid,
+        ) else {
+            return 1;
+        };
+        let ok = !is_protected_image(h) && K32EmptyWorkingSet(h).as_bool();
+        let _ = CloseHandle(h);
+        u32::from(!ok)
+    }
+}
+
+/// `--worker kill <pid>` — 2단계 종료(FR-3): WM_CLOSE 요청 → 타임아웃 후 TerminateProcess.
+pub fn run_kill(pid: u32) -> u32 {
+    unsafe {
+        enable_privileges();
+        let Ok(h) = OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE | SYNCHRONIZE,
+            false,
+            pid,
+        ) else {
+            return 1;
+        };
+        if is_protected_image(h) {
+            let _ = CloseHandle(h); // 보호 대상 — 진입 차단(15 §4)
+            return 1;
+        }
+        post_close_to_windows(pid);
+        // 정상 종료 대기(기본 3초) — 저장 기회를 준 뒤에만 강제 종료
+        let waited = WaitForSingleObject(h, GRACEFUL_WAIT_MS);
+        let ok = if waited == WAIT_OBJECT_0 {
+            true
+        } else {
+            TerminateProcess(h, 1).is_ok() && WaitForSingleObject(h, 2_000) == WAIT_OBJECT_0
+        };
+        let _ = CloseHandle(h);
+        u32::from(!ok)
+    }
+}
+
+const GRACEFUL_WAIT_MS: u32 = 3_000;
+
+/// 대상 PID의 최상위 창에 WM_CLOSE 게시(정상 종료 요청).
+unsafe fn post_close_to_windows(pid: u32) {
+    let _ = EnumWindows(Some(close_proc), LPARAM(pid as isize));
+}
+
+unsafe extern "system" fn close_proc(hwnd: HWND, lp: LPARAM) -> BOOL {
+    let mut owner = 0u32;
+    GetWindowThreadProcessId(hwnd, Some(&mut owner));
+    if owner == lp.0 as u32 {
+        let _ = PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
+    }
+    true.into()
 }
 
 /// 영역 ② — 우선순위 0 스탠바이 퍼지. 반환 = NTSTATUS(0 = 성공).

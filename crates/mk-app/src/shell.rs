@@ -31,7 +31,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SetForegroundWindow, SetTimer, TrackPopupMenu, HICON, ICONINFO, MF_GRAYED, MF_SEPARATOR,
     MF_STRING, MSG, SM_CXSMICON, SM_CYSMICON, SW_SHOWNORMAL, TPM_BOTTOMALIGN, TPM_NONOTIFY,
     TPM_RETURNCMD, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WM_APP, WM_CONTEXTMENU, WM_CREATE, WM_DESTROY,
-    WM_RBUTTONUP, WM_TIMER, WNDCLASSW, WS_OVERLAPPED,
+    WM_LBUTTONUP, WM_RBUTTONUP, WM_TIMER, WNDCLASSW, WS_OVERLAPPED,
 };
 
 const CLASS: PCWSTR = w!("NexaMemKeeperShell");
@@ -39,6 +39,8 @@ const CLASS: PCWSTR = w!("NexaMemKeeperShell");
 const WM_TRAY: u32 = WM_APP + 1;
 /// 워커 완료 통지(wParam = 종료 코드) — 워커 스레드에서 PostMessage(docs/08 §4-3).
 const WM_WORKER_DONE: u32 = WM_APP + 2;
+/// 단일 프로세스 작업(trim/kill) 완료(wParam = 성공 여부, lParam = PID).
+const WM_ITEM_DONE: u32 = WM_APP + 3;
 const TRAY_ID: u32 = 1;
 const TIMER_POLL: usize = 1;
 /// 관찰 폴링 주기(docs/05 §4-3 기본값 5초 — M4에서 설정으로 이동).
@@ -46,6 +48,7 @@ const POLL_MS: u32 = 5_000;
 const CMD_EXIT: usize = 100;
 const CMD_CLEAN: usize = 101;
 const CMD_ELEVATE: usize = 102;
+const CMD_TOP5: usize = 103;
 
 thread_local! {
     /// 직전 표시 %(같으면 아이콘 재생성 생략 — 유휴 CPU ~0% 게이트).
@@ -110,9 +113,27 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
         }
         WM_TRAY => {
             let event = lp.0 as u32;
+            if cfg!(debug_assertions) {
+                eprintln!("shell: WM_TRAY event=0x{event:04X}");
+            }
             if event == WM_RBUTTONUP || event == WM_CONTEXTMENU {
                 show_menu(hwnd);
+            } else if event == WM_LBUTTONUP {
+                crate::popup::show(hwnd); // FR-2 Top 5 팝업
             }
+            LRESULT(0)
+        }
+        WM_ITEM_DONE => {
+            let pid = lp.0 as u32;
+            let (title, body) = if wp.0 != 0 {
+                ("작업 완료", format!("PID {pid} 처리 완료"))
+            } else {
+                (
+                    "작업 실패",
+                    format!("PID {pid} 처리 실패(권한·보호 대상 여부 확인)"),
+                )
+            };
+            notify_balloon(hwnd, title, &body, wp.0 != 0);
             LRESULT(0)
         }
         WM_WORKER_DONE => {
@@ -147,7 +168,7 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
 }
 
 /// 현재 메모리 스냅샷 — `GlobalMemoryStatusEx`(docs/07 §1). 실패 시 total=0(표시 0%).
-fn read_mem() -> MemSnapshot {
+pub(crate) fn read_mem() -> MemSnapshot {
     let mut ms = MEMORYSTATUSEX {
         dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,
         ..Default::default()
@@ -203,6 +224,36 @@ unsafe fn notify_balloon(hwnd: HWND, title: &str, body: &str, ok: bool) {
     let n = b.len().min(nid.szInfo.len() - 1);
     nid.szInfo[..n].copy_from_slice(&b[..n]);
     let _ = Shell_NotifyIconW(NIM_MODIFY, &nid);
+}
+
+/// 팝업 등 외부 모듈에서 정리 요청(팝업 [지금 정리] 버튼).
+pub(crate) fn request_clean(hwnd: HWND) {
+    spawn_clean(hwnd);
+}
+
+/// 단일 프로세스 대상 워커 요청(`trim`/`kill`) — 완료 시 셸이 결과를 풍선으로 알린다.
+pub(crate) fn request_worker(hwnd: HWND, action: &'static str, pid: u32) {
+    let hwnd_raw = hwnd.0 as usize;
+    std::thread::spawn(move || {
+        let ok = std::env::current_exe()
+            .ok()
+            .and_then(|exe| {
+                std::process::Command::new(exe)
+                    .args(["--worker", action, &pid.to_string()])
+                    .status()
+                    .ok()
+            })
+            .map(|s| s.success())
+            .unwrap_or(false);
+        unsafe {
+            let _ = PostMessageW(
+                Some(HWND(hwnd_raw as *mut core::ffi::c_void)),
+                WM_ITEM_DONE,
+                WPARAM(usize::from(ok)),
+                LPARAM(pid as isize),
+            );
+        }
+    });
 }
 
 /// 정리 워커 기동(DR-7) — 별도 스레드에서 프로세스 실행·대기 후 결과를 PostMessage.
@@ -295,7 +346,7 @@ unsafe fn tray_update(hwnd: HWND) {
 
 /// 자기 워킹셋 트림(docs/08 §4-2) — 초기화가 끝난 시점에 1회. 시작 과정에서 적재된
 /// 공유 DLL·초기화 페이지를 스탠바이로 반환해 상주 점유를 실사용분만 남긴다(DR-8 게이트).
-unsafe fn self_trim() {
+pub(crate) unsafe fn self_trim() {
     let _ = K32EmptyWorkingSet(GetCurrentProcess());
 }
 
@@ -307,7 +358,7 @@ unsafe fn drop_icon() {
 }
 
 /// 색 단계(docs/05 §4-3): 정상 녹색 / 주의(≥80%) 주황 / 위험(≥90%) 적색. COLORREF=0x00BBGGRR.
-fn level_color(percent: u32) -> COLORREF {
+pub(crate) fn level_color(percent: u32) -> COLORREF {
     match level(percent) {
         Level::Normal => COLORREF(0x00327D2E),
         Level::Warn => COLORREF(0x00007CF5),
@@ -405,6 +456,7 @@ unsafe fn show_menu(hwnd: HWND) {
         MF_STRING
     };
     let _ = AppendMenuW(menu, clean_flags, CMD_CLEAN, w!("지금 정리(&C)"));
+    let _ = AppendMenuW(menu, MF_STRING, CMD_TOP5, w!("Top 5 보기(&T)"));
     if !is_elevated() {
         let _ = AppendMenuW(
             menu,
@@ -434,6 +486,9 @@ unsafe fn show_menu(hwnd: HWND) {
             let _ = DestroyWindow(hwnd);
         }
         CMD_CLEAN => spawn_clean(hwnd),
+        CMD_TOP5 => {
+            crate::popup::show(hwnd);
+        }
         CMD_ELEVATE => restart_elevated(hwnd),
         _ => {}
     }
