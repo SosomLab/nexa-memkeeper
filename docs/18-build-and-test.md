@@ -39,13 +39,15 @@ cargo build --release
 Start-Process target\release\NexaMemKeeper.exe
 ```
 
+> ⚠️ **`targetelease\mk-app.exe`를 실행하지 말 것.** crate 이름을 바꾸기 전(DR-12) 만들어진 **낡은 산출물**이 target에 남아 있어, 그걸 띄우면 최신 코드가 아닌 예전 바이너리가 뜼다. 08-07 QA에서 실제로 이 exe를 재기동해 "목록 보기가 동작하지 않는다"는 증상이 나왔다(옆 워커가 `--worker list`를 모르고 즉시 종료). 발견 즉시 삭제하고, 항상 **`NexaMemKeeper.exe`**만 띄운다.
+>
 > 산출물 이름은 **`NexaMemKeeper.exe`**(DR-12 — `[[bin]] name`). 버전 리소스는 `build.rs`가 Windows SDK `rc.exe`로 임베드하며, rc.exe가 없으면 경고만 남기고 건너뛴다(빌드는 성공).
 
 ## 4. 예산 실측 (DR-8 게이트 — 마일스톤 완료 전 필수)
 
 | 게이트 | 기준 | 측정 |
 | --- | --- | --- |
-| exe 크기 | ≤ 3MB | `(Get-Item target\release\mk-app.exe).Length / 1MB` |
+| exe 크기 | ≤ 3MB | `(Get-Item target\release\NexaMemKeeper.exe).Length / 1MB` |
 | 유휴 RSS | ≤ 5MB | 릴리스 exe 실행 → **1분 방치** 후 `Get-Process mk-app \| Select WorkingSet64` (작업 관리자 "메모리" 열과 교차 확인) |
 | 외부 DLL 0 | OS 인박스만 | `dumpbin /dependents`(또는 Dependencies 도구)로 임포트 목록 확인 |
 | 유휴 CPU | ~0% | 작업 관리자 1분 관찰 — 0.0~0.1% |
