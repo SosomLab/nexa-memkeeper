@@ -87,6 +87,7 @@ const ID_VIEW_TREE: usize = 251;
 const ID_EXPAND_ALL: usize = 252;
 const ID_COLLAPSE_ALL: usize = 253;
 const ID_CLEAR_FILTER: usize = 254;
+const ID_SHOW_THREADS: usize = 255;
 const ID_URL_HOME: usize = 241;
 const ID_URL_REPO: usize = 242;
 const ID_URL_APP: usize = 243;
@@ -127,6 +128,8 @@ struct ListState {
     hide_pseudo: bool,
     /// 평면 목록(계층 없음) — **기본값**. 트리는 부모가 접히면 자식을 못 찾는다(08-07 사용자 사례).
     flat: bool,
+    /// 쓰레드 행 표시 — **기본 off**(사용자 확정 08-07). 작업 관리자처럼 프로세스 계층만 본다.
+    show_threads: bool,
     /// 이름 검색어 — 창에 그냥 타이핑하면 채워진다(Esc = 지움). 비어 있지 않으면 항상 평면 표시.
     filter: String,
     refresh_ms: u32,
@@ -286,6 +289,8 @@ unsafe fn build_menu(hwnd: HWND) -> HMENU {
     );
     let _ = AppendMenuW(view, MF_STRING, ID_VIEW_TREE, tw!("Process Tree(&T)"));
     let _ = AppendMenuW(view, MF_SEPARATOR, 0, None);
+    let _ = AppendMenuW(view, MF_STRING, ID_SHOW_THREADS, tw!("Show threads(&H)"));
+    let _ = AppendMenuW(view, MF_SEPARATOR, 0, None);
     let _ = AppendMenuW(view, MF_STRING, ID_EXPAND_ALL, tw!("Expand All(&E)"));
     let _ = AppendMenuW(view, MF_STRING, ID_COLLAPSE_ALL, tw!("Collapse All(&C)"));
     let _ = AppendMenuW(view, MF_SEPARATOR, 0, None);
@@ -351,7 +356,23 @@ unsafe fn build_menu(hwnd: HWND) -> HMENU {
 /// `with_state_ret`을 부르면 `RefCell` 이중 대여로 패닉하고 릴리스는 `panic=abort`라
 /// 창이 그대로 사라진다(08-07 사용자 QA: 의사 프로세스 숨김 해제 시 UI 종료).
 /// 필요한 값은 전부 인자로 받는다.
-unsafe fn sync_menu_checks(menu: HMENU, refresh_ms: u32, hide_pseudo: bool, flat: bool) {
+unsafe fn sync_menu_checks(
+    menu: HMENU,
+    refresh_ms: u32,
+    hide_pseudo: bool,
+    flat: bool,
+    show_threads: bool,
+) {
+    CheckMenuItem(
+        menu,
+        ID_SHOW_THREADS as u32,
+        MF_BYCOMMAND.0
+            | if show_threads {
+                MF_CHECKED.0
+            } else {
+                MF_UNCHECKED.0
+            },
+    );
     CheckMenuItem(
         menu,
         ID_VIEW_FLAT as u32,
@@ -416,6 +437,7 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                     sort_asc: false, // 점유 큰 순 = 기본
                     hide_pseudo: cfg.hide_pseudo,
                     flat: cfg.view_flat,
+                    show_threads: cfg.show_threads,
                     filter: String::new(),
                     refresh_ms: cfg.list_refresh_ms,
                     font: make_font(-12, 400),
@@ -426,7 +448,19 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                 })
             });
             reload();
-            sync_menu_checks(menu, cfg.list_refresh_ms, cfg.hide_pseudo, cfg.view_flat);
+            with_state(|st| {
+                if !st.flat {
+                    expand_all_parents(st);
+                    rebuild(st);
+                }
+            });
+            sync_menu_checks(
+                menu,
+                cfg.list_refresh_ms,
+                cfg.hide_pseudo,
+                cfg.view_flat,
+                cfg.show_threads,
+            );
             create_search(hwnd, make_font(-12, 400));
             layout_search(hwnd);
             SetTimer(Some(hwnd), TIMER_REFRESH, cfg.list_refresh_ms, None);
@@ -626,13 +660,30 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
             if !ok {
                 info_box(hwnd, tr("Autorun"), tr("Could not change the setting."));
             }
-            with_state(|st| sync_menu_checks(st.menu, st.refresh_ms, st.hide_pseudo, st.flat));
+            with_state(|st| {
+                sync_menu_checks(
+                    st.menu,
+                    st.refresh_ms,
+                    st.hide_pseudo,
+                    st.flat,
+                    st.show_threads,
+                )
+            });
         }
         ID_VIEW_FLAT | ID_VIEW_TREE => {
             with_state(|st| {
                 st.flat = id == ID_VIEW_FLAT;
+                if !st.flat && st.expanded.is_empty() {
+                    expand_all_parents(st); // 트리로 바꾸면 기본은 펼친 상태
+                }
                 rebuild(st);
-                sync_menu_checks(st.menu, st.refresh_ms, st.hide_pseudo, st.flat);
+                sync_menu_checks(
+                    st.menu,
+                    st.refresh_ms,
+                    st.hide_pseudo,
+                    st.flat,
+                    st.show_threads,
+                );
             });
             sync_scrollbar(hwnd);
             let _ = InvalidateRect(Some(hwnd), None, false);
@@ -655,11 +706,32 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
             sync_scrollbar(hwnd);
             let _ = InvalidateRect(Some(hwnd), None, false);
         }
+        ID_SHOW_THREADS => {
+            with_state(|st| {
+                st.show_threads = !st.show_threads;
+                sync_menu_checks(
+                    st.menu,
+                    st.refresh_ms,
+                    st.hide_pseudo,
+                    st.flat,
+                    st.show_threads,
+                );
+                rebuild(st);
+            });
+            sync_scrollbar(hwnd);
+            let _ = InvalidateRect(Some(hwnd), None, false);
+        }
         ID_CLEAR_FILTER => set_filter(hwnd, None),
         ID_HIDE_PSEUDO => {
             with_state(|st| {
                 st.hide_pseudo = !st.hide_pseudo;
-                sync_menu_checks(st.menu, st.refresh_ms, st.hide_pseudo, st.flat);
+                sync_menu_checks(
+                    st.menu,
+                    st.refresh_ms,
+                    st.hide_pseudo,
+                    st.flat,
+                    st.show_threads,
+                );
             });
             reload();
             sync_scrollbar(hwnd);
@@ -673,7 +745,7 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
             };
             with_state(|st| {
                 st.refresh_ms = ms;
-                sync_menu_checks(st.menu, ms, st.hide_pseudo, st.flat);
+                sync_menu_checks(st.menu, ms, st.hide_pseudo, st.flat, st.show_threads);
             });
             SetTimer(Some(hwnd), TIMER_REFRESH, ms, None);
         }
@@ -914,6 +986,18 @@ fn with_state_ret<T>(f: impl FnOnce(&mut ListState) -> T) -> Option<T> {
     STATE.with(|s| s.borrow_mut().as_mut().map(f))
 }
 
+/// 자식이 있는 프로세스를 모두 펼친다 — 트리 기본 보기에서 자식이 접혀 안 보이는 일을 막는다
+/// (08-07: 접힌 부모 밑에 있어 프로그램을 못 찾는 사례가 있었다. 쓰레드는 옵션이므로 영향 없음).
+fn expand_all_parents(st: &mut ListState) {
+    let has_child: HashSet<u32> = st.procs.iter().map(|p| p.ppid).collect();
+    st.expanded.clear();
+    for p in &st.procs {
+        if has_child.contains(&p.pid) {
+            st.expanded.insert(p.pid);
+        }
+    }
+}
+
 /// 목록 재수집 + 재구성(정렬·펼침·검색·스크롤·선택 유지).
 fn reload() {
     let all = crate::procs::enumerate();
@@ -928,9 +1012,21 @@ fn reload() {
 /// 검색 중에는 결과가 부모 아래 숨지 않도록 **항상 평면**으로 그린다.
 fn rebuild(st: &mut ListState) {
     st.rows = if st.flat || !st.filter.is_empty() {
-        mk_core::build_rows_flat(&st.procs, st.sort_key, st.sort_asc, &st.expanded)
+        mk_core::build_rows_flat(
+            &st.procs,
+            st.sort_key,
+            st.sort_asc,
+            &st.expanded,
+            st.show_threads,
+        )
     } else {
-        mk_core::build_rows(&st.procs, st.sort_key, st.sort_asc, &st.expanded)
+        mk_core::build_rows(
+            &st.procs,
+            st.sort_key,
+            st.sort_asc,
+            &st.expanded,
+            st.show_threads,
+        )
     };
     st.top = st.top.min(st.max_top());
 }
