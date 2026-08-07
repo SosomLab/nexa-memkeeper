@@ -32,17 +32,17 @@ use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CheckMenuItem, CreateMenu, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
     DestroyMenu, DestroyWindow, DispatchMessageW, GetClientRect, GetCursorPos, GetDlgItem,
     GetMessageW, GetScrollInfo, GetWindowTextLengthW, GetWindowTextW, KillTimer, LoadCursorW,
-    LoadIconW, MessageBoxW, MoveWindow, PostQuitMessage, RegisterClassW, SendMessageW,
-    SetForegroundWindow, SetMenu, SetTimer, SetWindowTextW, ShowWindow, TrackPopupMenu,
-    TranslateMessage, BS_FLAT, CW_USEDEFAULT, ES_AUTOHSCROLL, HMENU, IDC_ARROW, IDYES,
-    MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_YESNO, MF_BYCOMMAND, MF_CHECKED, MF_GRAYED,
-    MF_POPUP, MF_SEPARATOR, MF_STRING, MF_UNCHECKED, MSG, SB_BOTTOM, SB_LINEDOWN, SB_LINEUP,
-    SB_PAGEDOWN, SB_PAGEUP, SB_THUMBPOSITION, SB_THUMBTRACK, SB_TOP, SB_VERT, SCROLLINFO,
-    SCROLLINFO_MASK, SIF_PAGE, SIF_POS, SIF_RANGE, SIF_TRACKPOS, SW_HIDE, SW_SHOW, SW_SHOWNORMAL,
-    TPM_RETURNCMD, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CHAR, WM_COMMAND, WM_CREATE,
-    WM_DESTROY, WM_KEYDOWN, WM_LBUTTONDOWN, WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONUP, WM_SETFONT,
-    WM_SIZE, WM_TIMER, WM_VSCROLL, WNDCLASSW, WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW,
-    WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    LoadIconW, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassW,
+    SendMessageW, SetForegroundWindow, SetMenu, SetTimer, SetWindowTextW, ShowWindow,
+    TrackPopupMenu, TranslateMessage, BS_FLAT, CW_USEDEFAULT, ES_AUTOHSCROLL, HMENU, IDC_ARROW,
+    IDYES, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_YESNO, MF_BYCOMMAND, MF_CHECKED,
+    MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING, MF_UNCHECKED, MSG, SB_BOTTOM, SB_LINEDOWN,
+    SB_LINEUP, SB_PAGEDOWN, SB_PAGEUP, SB_THUMBPOSITION, SB_THUMBTRACK, SB_TOP, SB_VERT,
+    SCROLLINFO, SCROLLINFO_MASK, SIF_PAGE, SIF_POS, SIF_RANGE, SIF_TRACKPOS, SW_HIDE, SW_SHOW,
+    SW_SHOWNORMAL, TPM_RETURNCMD, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_CHAR,
+    WM_COMMAND, WM_CREATE, WM_DESTROY, WM_KEYDOWN, WM_LBUTTONDOWN, WM_MOUSEWHEEL, WM_PAINT,
+    WM_RBUTTONUP, WM_SETFONT, WM_SIZE, WM_TIMER, WM_VSCROLL, WNDCLASSW, WS_CHILD, WS_EX_CLIENTEDGE,
+    WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 
 const CLASS: PCWSTR = w!("NexaMemKeeperList");
@@ -54,6 +54,8 @@ const STATUS_H: i32 = 24;
 const SEARCH_H: i32 = 30;
 /// 검색 칸 오른쪽 끝에 겹쳐 놓는 지우기(✕) 버튼 크기.
 const CLEAR_W: i32 = 22;
+/// 대상 작업(회수·종료) 완료 통지 — 백그라운드 스레드에서 PostMessage(wParam = 성공 여부).
+const WM_ACTION_DONE: u32 = WM_APP + 1;
 /// 검색 입력·지우기 컨트롤 ID.
 const ID_SEARCH: usize = 300;
 const ID_SEARCH_CLEAR: usize = 301;
@@ -150,6 +152,45 @@ impl ListState {
 
 thread_local! {
     static STATE: std::cell::RefCell<Option<ListState>> = const { std::cell::RefCell::new(None) };
+    /// 회수·종료 작업이 백그라운드에서 도는 중(중복 실행 방지 + 상태 줄 표시).
+    static BUSY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// 행에 대한 대상 작업 — 종료 대기가 길어 **UI 스레드에서 실행하면 안 된다**.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RowAction {
+    Trim,
+    Kill,
+    KillTree,
+    KillThread,
+}
+
+/// 작업을 백그라운드 스레드에서 실행하고 완료를 창에 알린다.
+///
+/// 왜 스레드인가 — `run_kill`은 정상 종료를 최대 3초 기다리고 실패 시 강제 종료 후 다시 2초를
+/// 기다린다. 트리 종료는 프로세스 수만큼 반복되므로 UI 스레드에서 돌리면 메시지 루프가 막혀
+/// 창이 "응답 없음"이 된다(08-07 사용자 QA).
+fn spawn_action(hwnd: HWND, action: RowAction, target: u32) {
+    if BUSY.replace(true) {
+        return; // 이미 진행 중 — 중복 실행 금지
+    }
+    let hwnd_raw = hwnd.0 as usize;
+    std::thread::spawn(move || {
+        let ok = match action {
+            RowAction::Trim => crate::worker::run_trim(target) == 0,
+            RowAction::Kill => crate::worker::run_kill(target) == 0,
+            RowAction::KillTree => crate::worker::run_kill_tree(target) == 0,
+            RowAction::KillThread => crate::worker::run_kill_thread(target) == 0,
+        };
+        unsafe {
+            let _ = PostMessageW(
+                Some(HWND(hwnd_raw as *mut core::ffi::c_void)),
+                WM_ACTION_DONE,
+                WPARAM(usize::from(ok)),
+                LPARAM(0),
+            );
+        }
+    });
 }
 
 /// `--worker list` 진입 — 창을 닫을 때까지 메시지 루프. 종료 코드 0.
@@ -525,6 +566,11 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
             if let Some(r) = target {
                 item_menu(hwnd, &r);
             }
+            LRESULT(0)
+        }
+        WM_ACTION_DONE => {
+            BUSY.set(false);
+            act(hwnd, wp.0 != 0); // 실패면 안내 + 목록 갱신
             LRESULT(0)
         }
         WM_DESTROY => {
@@ -1331,7 +1377,9 @@ unsafe fn paint(hwnd: HWND) {
                 }
             })
             .unwrap_or_default();
-        let mode = if !st.filter.is_empty() {
+        let mode = if BUSY.get() {
+            tr("Working…").to_string()
+        } else if !st.filter.is_empty() {
             format!(
                 "🔍 {} \"{}\" — {} {}",
                 tr("Search"),
@@ -1427,9 +1475,7 @@ unsafe fn item_menu(hwnd: HWND, row: &Row) {
 /// 선택 행에 대한 실제 동작 — 메뉴바·컨텍스트 메뉴 공용 경로.
 unsafe fn run_row_action(hwnd: HWND, row: &Row, id: usize) {
     match id {
-        ID_TRIM_SEL if row.kind == RowKind::Process => {
-            act(hwnd, crate::worker::run_trim(row.pid) == 0)
-        }
+        ID_TRIM_SEL if row.kind == RowKind::Process => spawn_action(hwnd, RowAction::Trim, row.pid),
         ID_KILL_SEL if row.kind == RowKind::Process => {
             if confirm(
                 hwnd,
@@ -1441,7 +1487,7 @@ unsafe fn run_row_action(hwnd: HWND, row: &Row, id: usize) {
                     tr("Unsaved work may be lost.")
                 ),
             ) {
-                act(hwnd, crate::worker::run_kill(row.pid) == 0);
+                spawn_action(hwnd, RowAction::Kill, row.pid);
             }
         }
         ID_KILL_TREE_SEL if row.kind == RowKind::Process => {
@@ -1458,7 +1504,7 @@ unsafe fn run_row_action(hwnd: HWND, row: &Row, id: usize) {
                     tr("Unsaved work may be lost.")
                 ),
             ) {
-                act(hwnd, crate::worker::run_kill_tree(row.pid) == 0);
+                spawn_action(hwnd, RowAction::KillTree, row.pid);
             }
         }
         ID_KILL_THREAD_SEL if row.kind == RowKind::Thread => {
@@ -1473,7 +1519,7 @@ unsafe fn run_row_action(hwnd: HWND, row: &Row, id: usize) {
                     tr("Force-ending a thread can corrupt the program's state.")
                 ),
             ) {
-                act(hwnd, crate::worker::run_kill_thread(row.tid) == 0);
+                spawn_action(hwnd, RowAction::KillThread, row.tid);
             }
         }
         ID_TRIM_SEL | ID_KILL_SEL | ID_KILL_TREE_SEL => {

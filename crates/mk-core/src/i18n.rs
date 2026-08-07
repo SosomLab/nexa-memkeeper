@@ -190,6 +190,7 @@ const KO: &[(&str, &str)] = &[
     ("flat list", "평면 목록"),
     ("tree view", "트리 보기"),
     ("Search", "검색"),
+    ("Working…", "처리 중…"),
     (
         "Type a process name or PID",
         "프로세스명이나 PID를 입력하세요",
