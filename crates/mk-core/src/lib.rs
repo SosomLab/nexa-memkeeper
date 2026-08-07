@@ -47,6 +47,21 @@ pub fn fmt_mb(bytes: u64) -> String {
     format!("{:.1}MB", bytes as f64 / (1024.0 * 1024.0))
 }
 
+/// 총량급 용량 문자열 — GB 고정, 소수 1자리(트레이 툴팁용).
+pub fn fmt_gb(bytes: u64) -> String {
+    format!("{:.1}GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+}
+
+/// 트레이 툴팁 텍스트(FR-1) — 사용률·사용량/전체. 마지막 정리 정보는 M1에서 추가.
+pub fn tray_tooltip(s: &MemSnapshot) -> String {
+    format!(
+        "Nexa MemKeeper — {}% ({} / {})",
+        s.used_percent(),
+        fmt_gb(s.used()),
+        fmt_gb(s.total)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,5 +119,20 @@ mod tests {
         assert_eq!(fmt_mb(1024 * 1024), "1.0MB");
         assert_eq!(fmt_mb(1536 * 1024), "1.5MB");
         assert_eq!(fmt_mb(16 * 1024 * 1024 * 1024), "16384.0MB");
+    }
+
+    #[test]
+    fn fmt_gb_one_decimal() {
+        assert_eq!(fmt_gb(16 << 30), "16.0GB");
+        assert_eq!(fmt_gb((10 << 30) + (1 << 29)), "10.5GB");
+    }
+
+    #[test]
+    fn tray_tooltip_shape() {
+        let s = MemSnapshot {
+            total: 16 << 30,
+            avail: 8 << 30,
+        };
+        assert_eq!(tray_tooltip(&s), "Nexa MemKeeper — 50% (8.0GB / 16.0GB)");
     }
 }

@@ -1,0 +1,6 @@
+# CRT 정적 링크 — 재배포 런타임 0 (DR-8 DLL 게이트, docs/18 §4) — nexa-dir2 .cargo/config.toml 계승
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
