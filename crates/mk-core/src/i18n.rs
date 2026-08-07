@@ -190,6 +190,10 @@ const KO: &[(&str, &str)] = &[
     ("flat list", "평면 목록"),
     ("tree view", "트리 보기"),
     ("Search", "검색"),
+    (
+        "Type a process name or PID",
+        "프로세스명이나 PID를 입력하세요",
+    ),
     ("matches (Esc to clear)", "개 일치(Esc 지움)"),
     (
         "sec refresh · type=search · header=sort · right-click=trim/end",
