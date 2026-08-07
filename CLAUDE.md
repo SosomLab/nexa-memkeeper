@@ -18,6 +18,7 @@
 | DR-1 | 라이선스 = **PolyForm Noncommercial 1.0.0** — 개인·비상업 무료, 상업은 유료(kiros33@sosomlab.com). 영문 정본 [LICENSE.md](LICENSE.md) + 한글본 [LICENSE.ko.md](LICENSE.ko.md) |
 | DR-2 | 문서·git 규약 = `nexa-dir2` 표준 계승 — SSOT는 [docs/16](docs/16-doc-git-conventions.md) |
 | DR-3 | 프로그램 목적 확정(사용자 확정 08-07) — 위 §1. 스펙 SSOT = [docs/05](docs/05-requirements.md) |
+| DR-4 | **판단 우선순위 = 성능·동작 안정성 > 개발·배포 편의성**(사용자 확정 08-07) — 모든 ADR 트레이드오프 판정 기준 |
 
 ## 3. 작업 규약 (요약 — SSOT는 [docs/16](docs/16-doc-git-conventions.md))
 
@@ -35,5 +36,5 @@
 
 ## 5. 다음 단계 (2026-08-07 2차 갱신)
 
-1. **사용자 판단 대기(P-4)** — ① [ADR-0001 스택](docs/06-adr-0001-stack.md)(권고: Rust+windows-rs) ② [ADR-0002 회수 기법](docs/07-adr-0002-memory-reclaim.md) ③ [ADR-0003 상주 구조](docs/08-adr-0003-resident-architecture.md)(권고: 단일 프로세스+자기 트림) ④ 예산 수치([docs/00 §3](docs/00-vision.md)). 승인 시 DR-4~7 승격.
+1. **사용자 판단 대기(P-4)** — ① [ADR-0001 스택](docs/06-adr-0001-stack.md)(권고: Rust+windows-rs) ② [ADR-0002 회수 기법](docs/07-adr-0002-memory-reclaim.md) ③ [ADR-0003 상주 구조](docs/08-adr-0003-resident-architecture.md)(권고: 하이브리드 — 셸+온디맨드 워커, DR-4 기준 정정) ④ 예산 수치([docs/00 §3](docs/00-vision.md)). 승인 시 DR-5~8 승격.
 2. 승인 후: 15 개발 방법론·18 빌드&테스트 작성 + 크레이트 골격(P-5) → 로드맵(02)·M0 착수(P-6).
