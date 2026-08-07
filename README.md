@@ -1,9 +1,11 @@
-# Nexa MemKeeper
+# Nexa MemKeeper — 트레이 상주 초경량 메모리 최적화 도구
 
-> SosomLab의 신규 프로젝트 — 한 줄 소개는 프로젝트 정의 확정 후 갱신 예정.
+> Ultra-lightweight tray-resident memory optimizer for Windows.
 
-현재 **준비 단계**입니다. 문서·git 규약과 라이선스 정책은 [`SosomLab/nexa-dir2`](https://github.com/SosomLab/nexa-dir2)의 검증 표준을 계승합니다.
-개발 목표·기술 기반은 정리 중이며, 확정되는 대로 이 문서와 [docs/](docs/README.md)에 반영합니다.
+**Nexa MemKeeper**는 시스템 트레이에 상주하며 메모리를 지속 관찰하고, 필요 없어진 메모리를 회수해 여유분을 늘려주는 Windows 도구입니다.
+**도구 자신의 점유 최소화가 정체성** — 상주부는 최소로, 기능(Top 5 점유 팝업·프로세스 트리 뷰·선택 종료/회수)은 수행 시에만 점유하고 종료 시 스스로 회수합니다.
+
+현재 **준비 단계**(정의 문서 완료, 기술 스택 결정 중)입니다. 문서·git 규약과 라이선스 정책은 [`SosomLab/nexa-dir2`](https://github.com/SosomLab/nexa-dir2)의 검증 표준을 계승합니다.
 
 ## 문서 — 📖 [문서 홈](docs/README.md)에서 시작
 
