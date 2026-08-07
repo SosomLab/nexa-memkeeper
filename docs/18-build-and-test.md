@@ -43,6 +43,9 @@ cargo build --release
 
 - **PowerShell로 릴리스 exe의 종료 코드를 재지 마라** — 릴리스는 GUI 서브시스템(`windows_subsystem`)이라 `& $exe`가 **대기하지 않고 즉시 0을 반환**한다. 워커 종료 코드 확인은 **디버그 빌드**(콘솔 있음)로 하거나 `Start-Process -Wait` 사용. 셸의 `Command::status()`는 서브시스템과 무관하게 정상 대기한다.
 - 워커 진단은 stderr 1줄(`clean: trimmed=… purge_status=… avail …`) — 디버그 빌드를 콘솔에서 실행할 때만 보인다.
+- **트레이 클릭 시뮬레이션은 `WM_APP+1 = 0x8001`** — `WM_USER+1`(0x0401)로 보내면 조용히 무시된다(08-07 M2에서 오진 유발). lParam = `WM_LBUTTONUP`(0x0202) / `WM_RBUTTONUP`(0x0205).
+- 열거 성능 측정: `mk-app.exe --worker bench` — 5회 반복해 프로세스 수·소요를 stderr에 출력(NFR-4 게이트).
+- 창 핸들은 `FindWindowW`보다 **EnumWindows + GetClassNameW**로 찾는 편이 확실하다(클래스 `NexaMemKeeperShell`·`NexaMemKeeperPopup`).
 
 ## 5. 실기 QA
 
