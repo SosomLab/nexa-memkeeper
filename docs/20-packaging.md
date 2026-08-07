@@ -116,6 +116,12 @@ winget 패키지 하나에 설치형과 포터블을 함께 담을 수 없다 �
 > push했다. 커뮤니티 저장소는 자동 검사 + 사람 모더레이션을 거치며, 통과 전에는 `choco install`로 보이지
 > 않는다([큐 확인](https://ch0.co/moderation)). 이후 태그부터는 변수가 켜져 있어 **자동으로 새 버전이 올라간다**.
 
+> ⚠️ **winget 토큰에는 `workflow` 스코프가 필요하다**(08-08 실측). `wingetcreate submit`은 토큰 계정의
+> `winget-pkgs` **포크**를 통해 PR을 여는데, upstream에 워크플로 파일 변경이 포함돼 있어 동기화에
+> `workflow` 권한이 요구된다. 없으면 매니페스트 검증까지는 통과하고 마지막에
+> `The forked repository could not be synced with the upstream commits`로 멈춘다.
+> 해결: PAT를 **`repo` + `workflow`**로 재발급 → 시크릿 `WINGET_TOKEN` 갱신 → `winget submit` 재실행.
+
 ### 7-5. 첫 등록에 필요한 사람 손 (자동화 밖)
 
 1. **Release가 먼저** — 매니페스트가 참조할 자산 URL·해시가 있어야 한다.

@@ -2,7 +2,15 @@
 
 > 최신이 맨 위(시간 역순, 같은 날 여러 건이면 "N차"로 스택). 상세는 [journal/](journal/), 여기는 요약만.
 
-## 2026-08-08 9차 — Chocolatey 등록
+## 2026-08-08 10차 — winget 등록 시도(토큰 스코프에서 막힘)
+
+- 첫 등록용 `winget submit` 워크플로 추가 — **매니페스트 검증은 통과**했다(설치형·포터블 2건).
+- 🔴 **PR 생성 실패**: `WINGET_TOKEN`에 **`workflow` 스코프**가 없어 `winget-pkgs` 포크를 upstream과 동기화하지 못한다.
+- 조치: PAT를 `repo`+`workflow`로 재발급 → 시크릿 갱신 → `winget submit` 재실행(코드 수정 불필요).
+- Chocolatey는 9차에서 이미 등록 완료(심사 대기).
+- 상세 → [journal/2026-08-08](journal/2026-08-08.md)
+
+## 직전(2026-08-08 9차) — Chocolatey 등록
 
 - **`nexa-memkeeper`(설치형) · `nexa-memkeeper.portable`(포터블) 0.7.0 push 완료** → 자동 검사·모더레이션 대기([큐](https://ch0.co/moderation)).
 - 게시 스위치 `CHOCO_PUSH=true`를 켰다 — **이후 태그부터는 새 버전이 자동으로 올라간다**(태그 전 확인이 더 중요해짐).
