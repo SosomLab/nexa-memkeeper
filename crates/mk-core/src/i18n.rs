@@ -261,6 +261,7 @@ const KO: &[(&str, &str)] = &[
         "(6) Page combining — slow, admin only",
         "⑥ 페이지 결합 — 느림, 관리자 전용",
     ),
+    (" · apps released ", " · 앱이 놓은 양 "),
     (
         "Also clean when Windows signals low memory",
         "Windows가 메모리 부족을 알리면 함께 정리",

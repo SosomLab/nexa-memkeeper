@@ -151,6 +151,9 @@ NtSetSystemInformation(
 
 ### 4-3. 회수량 보고 — 사용자에게 보여줄 수치
 
+> 08-08(E-1) 이후 알림은 **여유 증가분과 Active 감소분을 함께** 표시한다 — Avail 차이만으로는
+> 실제 일어난 일의 1/5도 설명하지 못하기 때문이다([21 §2-1](21-effectiveness-measurement.md)).
+
 ```
 회수량(MB) = AvailAfter − AvailBefore        // GlobalMemoryStatusEx 전/후 차
            (음수면 0으로 클램프 — 정리 중 타 프로세스 할당 소음)

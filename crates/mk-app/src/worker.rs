@@ -17,7 +17,9 @@ use windows::Win32::Security::{
     TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES,
 };
 use windows::Win32::System::ProcessStatus::{K32EmptyWorkingSet, K32EnumProcesses};
-use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+use windows::Win32::System::SystemInformation::{
+    GetSystemInfo, GlobalMemoryStatusEx, MEMORYSTATUSEX, SYSTEM_INFO,
+};
 use windows::Win32::System::Threading::{
     GetCurrentProcess, GetCurrentProcessId, OpenProcess, OpenProcessToken, OpenThread,
     QueryFullProcessImageNameW, TerminateProcess, TerminateThread, WaitForSingleObject,
@@ -31,6 +33,12 @@ use windows::Win32::UI::WindowsAndMessaging::{
 // NtSetSystemInformation은 windows crate 미노출 — ntdll raw-dylib 직접 선언(docs/07 §3).
 #[link(name = "ntdll", kind = "raw-dylib")]
 extern "system" {
+    fn NtQuerySystemInformation(
+        system_information_class: i32,
+        system_information: *mut core::ffi::c_void,
+        system_information_length: u32,
+        return_length: *mut u32,
+    ) -> i32; // NTSTATUS
     fn NtSetSystemInformation(
         system_information_class: i32,
         system_information: *mut core::ffi::c_void,
@@ -68,6 +76,7 @@ pub fn run_clean() -> u32 {
         let s = crate::config::load();
         enable_privileges();
         let before = avail_bytes();
+        let active_before = active_bytes();
 
         let (mut trimmed, mut skipped) = (0, 0);
         if s.areas.working_sets {
@@ -114,13 +123,20 @@ pub fn run_clean() -> u32 {
         }
 
         let after = avail_bytes();
+        let active_after = active_bytes();
         let mb = after.saturating_sub(before) / (1024 * 1024);
+        // Active는 **줄어드는** 방향이 회수다(Avail과 부호가 반대). 측정 실패(0)면 병기하지 않는다.
+        let active_mb = if active_before == 0 || active_after == 0 {
+            0
+        } else {
+            active_before.saturating_sub(active_after) / (1024 * 1024)
+        };
         eprintln!(
-            "clean: trimmed={trimmed} skipped={skipped}{log} avail {}MB -> {}MB (+{mb}MB)",
+            "clean: trimmed={trimmed} skipped={skipped}{log} avail {}MB -> {}MB (+{mb}MB) active -{active_mb}MB",
             before / (1024 * 1024),
             after / (1024 * 1024)
         );
-        mk_core::encode_clean_result(mb, partial)
+        mk_core::encode_clean_result(mb, active_mb, partial)
     }
 }
 
@@ -159,6 +175,52 @@ fn avail_bytes() -> u64 {
         return 0;
     }
     ms.ullAvailPhys
+}
+
+/// **Active 바이트** = `Total − Available − Modified`(docs/21 §2-2).
+///
+/// 앱이 실제로 쥐고 있는 물리 메모리다. 트림은 페이지를 Active에서 내려놓지만, 더티 페이지는
+/// Modified 목록으로 가서 **Available에는 아직 안 잡힌다** — 그래서 Avail 차이만 보면 실제
+/// 일어난 일의 1/5도 설명하지 못한다(E-1). Modified를 못 읽으면 0을 돌려 호출부가 병기를 건너뛴다.
+fn active_bytes() -> u64 {
+    let mut ms = MEMORYSTATUSEX {
+        dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,
+        ..Default::default()
+    };
+    if unsafe { GlobalMemoryStatusEx(&mut ms) }.is_err() {
+        return 0;
+    }
+    let Some(modified) = modified_bytes() else {
+        return 0;
+    };
+    ms.ullTotalPhys
+        .saturating_sub(ms.ullAvailPhys)
+        .saturating_sub(modified)
+}
+
+/// Modified 페이지 목록의 바이트 수 — `SystemMemoryListInformation` **질의**(설정과 같은 클래스).
+///
+/// 구조체 앞부분은 `Zero / Free / Modified / ModifiedNoWrite / Bad` 순의 `ULONG_PTR` 배열이라
+/// **세 번째 값**이 Modified다. 뒤쪽(우선순위별 배열)은 쓰지 않으므로 넉넉한 버퍼로 받고 앞만 읽는다.
+fn modified_bytes() -> Option<u64> {
+    const SYSTEM_MEMORY_LIST_INFORMATION: i32 = 80;
+    let mut buf = [0usize; 32];
+    let mut len = 0u32;
+    let status = unsafe {
+        NtQuerySystemInformation(
+            SYSTEM_MEMORY_LIST_INFORMATION,
+            buf.as_mut_ptr() as *mut core::ffi::c_void,
+            std::mem::size_of_val(&buf) as u32,
+            &mut len,
+        )
+    };
+    if status != 0 {
+        return None;
+    }
+    let mut si = SYSTEM_INFO::default();
+    unsafe { GetSystemInfo(&mut si) };
+    let page = si.dwPageSize.max(4096) as u64;
+    Some(buf[2] as u64 * page)
 }
 
 /// 영역 ① — 전 프로세스 워킹셋 트림. 선정 파이프라인(docs/19 §3-1):

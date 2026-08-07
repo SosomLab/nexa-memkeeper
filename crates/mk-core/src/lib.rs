@@ -909,22 +909,33 @@ pub fn filter_pseudo(procs: Vec<ProcInfo>, hide_pseudo: bool) -> Vec<ProcInfo> {
 pub const WORKER_FLAG_PARTIAL: u32 = 0x8000_0000;
 /// 워커 내부 오류(예약값 — 회수량으로 해석 금지).
 pub const WORKER_ERR: u32 = 0xFFFF_FFFF;
-const WORKER_MB_MAX: u32 = 0x7FFF_FFFE;
+/// 한 값당 15비트(0~32767MB = 32GB)씩 담는다 — 정리 1회의 변화량으로는 넉넉하다.
+/// 종료 코드 하나에 **여유 증가분과 Active 감소분 두 값**을 실어야 해서 이렇게 나눴다(E-1).
+const WORKER_MB_MAX: u32 = 0x7FFF;
+const WORKER_ACTIVE_SHIFT: u32 = 15;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CleanOutcome {
-    /// 회수량(MB, Avail 전후 차 — docs/19 §4-3).
+    /// 회수량(MB, Avail 전후 차 — docs/19 §4-3). **즉시 재사용 가능해진 양**.
     pub mb: u32,
+    /// **Active 감소분**(MB) — 앱이 쥐고 있다 놓은 양(docs/21 §2-1).
+    ///
+    /// Avail 차이만 보여 주면 실제 일어난 일의 1/5도 설명하지 못한다(실측: 표시 +679MB인
+    /// 정리에서 Active는 −3,870MB). 나머지는 더티 페이지라 Modified 목록으로 갔고 Modified는
+    /// Available에 포함되지 않기 때문이다. 두 숫자를 함께 보여 주는 게 정직하다(E-1).
+    pub active_mb: u32,
     /// true = 영역 일부 생략(승격 필요).
     pub partial: bool,
 }
 
-pub fn encode_clean_result(mb: u64, partial: bool) -> u32 {
-    let mb = (mb.min(WORKER_MB_MAX as u64)) as u32;
+pub fn encode_clean_result(mb: u64, active_mb: u64, partial: bool) -> u32 {
+    let mb = mb.min(WORKER_MB_MAX as u64) as u32;
+    let active = active_mb.min(WORKER_MB_MAX as u64) as u32;
+    let code = mb | (active << WORKER_ACTIVE_SHIFT);
     if partial {
-        mb | WORKER_FLAG_PARTIAL
+        code | WORKER_FLAG_PARTIAL
     } else {
-        mb
+        code
     }
 }
 
@@ -934,7 +945,8 @@ pub fn decode_clean_result(code: u32) -> Option<CleanOutcome> {
         return None;
     }
     Some(CleanOutcome {
-        mb: code & !WORKER_FLAG_PARTIAL,
+        mb: code & WORKER_MB_MAX,
+        active_mb: (code >> WORKER_ACTIVE_SHIFT) & WORKER_MB_MAX,
         partial: code & WORKER_FLAG_PARTIAL != 0,
     })
 }
@@ -944,6 +956,16 @@ pub fn clean_report(outcome: Option<CleanOutcome>) -> (String, String) {
     match outcome {
         Some(o) => {
             let mut body = format!("{}{}", o.mb, tr("MB reclaimed"));
+            // Active 감소분이 표시값보다 뚜렷하게 크면 함께 알린다 — 표시값 하나로는 실제
+            // 일어난 일을 설명하지 못한다(docs/21 §2-1). 비슷하면 굳이 두 숫자를 늘어놓지 않는다.
+            if o.active_mb > o.mb.saturating_add(o.mb / 4) {
+                body.push_str(&format!(
+                    "{}{}{}",
+                    tr(" · apps released "),
+                    o.active_mb,
+                    tr("MB")
+                ));
+            }
             if o.partial {
                 body.push_str(tr(" · some areas skipped (administrator rights required)"));
             }
@@ -1566,28 +1588,41 @@ mod tests {
 
     #[test]
     fn worker_result_roundtrip() {
-        let c = decode_clean_result(encode_clean_result(340, false)).unwrap();
-        assert_eq!((c.mb, c.partial), (340, false));
-        let c = decode_clean_result(encode_clean_result(0, true)).unwrap();
-        assert_eq!((c.mb, c.partial), (0, true));
+        // 종료 코드 하나에 여유 증가분·Active 감소분·부분 성공 플래그가 함께 실린다(E-1)
+        let c = decode_clean_result(encode_clean_result(340, 3870, false)).unwrap();
+        assert_eq!((c.mb, c.active_mb, c.partial), (340, 3870, false));
+        let c = decode_clean_result(encode_clean_result(0, 0, true)).unwrap();
+        assert_eq!((c.mb, c.active_mb, c.partial), (0, 0, true));
         // 오류 예약값
         assert_eq!(decode_clean_result(WORKER_ERR), None);
-        // 클램프: 예약값과 충돌하지 않음
-        let c = decode_clean_result(encode_clean_result(u64::MAX, true)).unwrap();
-        assert_eq!((c.mb, c.partial), (0x7FFF_FFFE, true));
+        // 클램프: 두 값 모두 15비트에서 잘리고 예약값(0xFFFFFFFF)과 충돌하지 않는다
+        let code = encode_clean_result(u64::MAX, u64::MAX, true);
+        assert_ne!(code, WORKER_ERR);
+        let c = decode_clean_result(code).unwrap();
+        assert_eq!((c.mb, c.active_mb, c.partial), (0x7FFF, 0x7FFF, true));
     }
 
     #[test]
     fn clean_report_texts() {
         set_lang(Lang::En);
+        // Active 감소분이 표시값과 비슷하면 병기하지 않는다(숫자를 늘어놓지 않는다)
         let (t, b) = clean_report(Some(CleanOutcome {
             mb: 340,
+            active_mb: 350,
             partial: false,
         }));
         assert_eq!(t, "Memory cleanup complete");
         assert_eq!(b, "340MB reclaimed");
+        // 뚜렷하게 크면 함께 알린다 — 실측 사례(표시 +679MB vs Active −3,870MB, docs/21 §2-1)
+        let (_, b) = clean_report(Some(CleanOutcome {
+            mb: 679,
+            active_mb: 3870,
+            partial: false,
+        }));
+        assert_eq!(b, "679MB reclaimed · apps released 3870MB");
         let (_, b) = clean_report(Some(CleanOutcome {
             mb: 12,
+            active_mb: 0,
             partial: true,
         }));
         assert!(b.contains("administrator rights required"));
@@ -1600,6 +1635,7 @@ mod tests {
         set_lang(Lang::Ko);
         let (t, _) = clean_report(Some(CleanOutcome {
             mb: 1,
+            active_mb: 0,
             partial: false,
         }));
         assert_eq!(t, "메모리 정리 완료");
