@@ -15,6 +15,7 @@
 | DR-6 | 2026-08-07 | **관찰·회수 기법 = ADR-0002 채택** — 열거는 `NtQuerySystemInformation` 1콜, 회수 영역 ①~⑥ API 매핑, 권한 asInvoker+온디맨드 승격, 미문서 API 폴백 규칙([07 §5](07-adr-0002-memory-reclaim.md)) |
 | DR-7 | 2026-08-07 | **상주 구조 = 하이브리드**(ADR-0003 정정판 채택) — 상주 셸(트레이·관찰·Top 5 팝업) + 온디맨드 워커 프로세스(트리 뷰·정리 엔진, `--worker` 재기동·종료 시 OS 전량 회수) |
 | DR-8 | 2026-08-07 | **예산 게이트 확정**([00 §3](00-vision.md) 승격) — 유휴 RSS ≤**5MB** · 단일 exe ≤**3MB** · 외부 DLL **0**(OS 인박스만) · 유휴 CPU ~0% · 기능 종료 후 유휴 복귀(NFR-3). 마일스톤마다 실측([18](18-build-and-test.md)), 초과 시 main 병합 금지 |
+| DR-9 | 2026-08-07 | **배포 2채널(사용자 확정)** — ① **설치형 exe**(Inno Setup): 제어판 프로그램 목록 등록 + 설치 마법사에서 "시스템 시작 시 자동 실행" **질문(기본값 = 체크됨)** ② **포터블 ZIP**: 무서명 exe의 다운로드 차단·SmartScreen 오탐 회피용 병행 채널. 구현은 M5([02](02-roadmap.md)) |
 
 ## 2. ADR 색인
 
@@ -28,4 +29,4 @@
 
 | crate | 사용 크레이트 | 용도 | 근거 |
 | --- | --- | --- | --- |
-| `windows` / `windows-core` | mk-app | Win32/NT 바인딩(런타임 아님 — 선언만) | DR-5 기본 허용. M0 트레이 슬라이스에서 도입 예정 |
+| `windows` 0.62.2 | mk-app | Win32/NT 바인딩(런타임 아님 — 선언만). features: Foundation·Gdi·LibraryLoader·ProcessStatus·SystemInformation·Threading·Shell·WindowsAndMessaging | DR-5 기본 허용. M0-1에서 도입(08-07) |

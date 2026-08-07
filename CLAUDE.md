@@ -6,7 +6,7 @@
 ## 1. 이 프로젝트는
 
 **Nexa MemKeeper** = Windows **시스템 트레이 상주 초경량 메모리 최적화 도구** — 지속 관찰·회수로 여유 메모리 확보, Top 5 점유 팝업·프로세스 트리 뷰(쓰레드)·선택 종료/회수·간단 설정. **도구 자신의 점유 최소화가 정체성**(유휴 RSS ≤5MB 제안). 상세 [docs/00](docs/00-vision.md)·[docs/05](docs/05-requirements.md).
-현 단계: **준비 완료(08-07 4차) — 기술 기반 확정(DR-5~8)·크레이트 골격 green, M0(트레이 상주 셸) 착수 대기.**
+현 단계: **M0-1 완료(08-07 5차) — 트레이 상주 셸 동작·게이트 전 항목 통과(exe 0.23MB·RSS 1.56MB·DLL 0). 사용자 실기 QA 후 0.1.0 승격.**
 
 - 조직: **SosomLab** · 개발자: Sangyong Bae · kiros33@gmail.com
 - 문서·git 규약은 `SosomLab/nexa-dir2`의 검증 표준을 전면 계승([docs/16](docs/16-doc-git-conventions.md)).
@@ -23,6 +23,7 @@
 | DR-6 | 관찰·회수 기법 = ADR-0002 — 열거 `NtQuerySystemInformation` 1콜, 회수 영역 ①~⑥, asInvoker+온디맨드 승격 |
 | DR-7 | 상주 구조 = **하이브리드** — 셸(트레이·관찰·Top 5 팝업) + 온디맨드 워커(`--worker`, 트리 뷰·정리 엔진 — 100% 회수·크래시 격리) |
 | DR-8 | **예산 게이트**: 유휴 RSS ≤5MB · exe ≤3MB · 외부 DLL 0 · 유휴 CPU ~0% — 초과 시 main 병합 금지([docs/18 §4](docs/18-build-and-test.md)) |
+| DR-9 | **배포 2채널**: 설치형 exe(Inno — 프로그램 목록 등록·자동 실행 질문 **기본 체크**) + 포터블 ZIP(무서명 오탐 회피). 구현 M5 |
 
 ## 3. 작업 규약 (요약 — SSOT는 [docs/16](docs/16-doc-git-conventions.md))
 
@@ -38,8 +39,8 @@
 
 1. 이 CLAUDE.md + [docs/STATUS.md](docs/STATUS.md) → 2. [DEVLOG](docs/DEVLOG.md) 최상단 + 최신 journal → 3. 할 일 = [docs/TODO.md](docs/TODO.md)(P-1부터 순차).
 
-## 5. 다음 단계 (2026-08-07 4차 갱신)
+## 5. 다음 단계 (2026-08-07 5차 갱신)
 
-1. **M0-1 — 트레이 상주 셸 수직 슬라이스**([docs/02 M0](docs/02-roadmap.md)): windows crate 도입(원장 기록)·트레이 아이콘(사용률 %·색 단계)·툴팁·종료 메뉴·5초 폴링. `nexa-dir2` 트레이·창 코드 먼저 확인 후 이식.
-2. M0-2 — 예산 실측 게이트([docs/18 §4](docs/18-build-and-test.md)) → `release: 0.1.0 승격`(태그 push는 별도 승인).
-3. 이후 M1(정리 엔진 v1 — 워커)부터 [docs/02](docs/02-roadmap.md) 순차.
+1. **M0-2 — 사용자 실기 QA·24h 상주 확인**(실측 게이트는 통과 완료) → `release: 0.1.0 승격`(태그 push는 별도 승인).
+2. **M1 — 정리 엔진 v1(워커)**: `--worker` 정리 실행(영역 ①워킹셋 트림+②우선순위0 퍼지)·회수량 알림·승격 재시작([docs/02 M1](docs/02-roadmap.md)).
+3. 이후 M2(Top 5 팝업)~M5(배포 2채널 — DR-9) 순차.
