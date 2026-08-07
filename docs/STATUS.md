@@ -2,7 +2,14 @@
 
 > 최신이 맨 위(시간 역순, 같은 날 여러 건이면 "N차"로 스택). 상세는 [journal/](journal/), 여기는 요약만.
 
-## 2026-08-07 24차 — 배포 완료 · Wiki 공개
+## 2026-08-07 25차 — `0.6.1` 재배포
+
+- **[0.6.1 릴리스](https://github.com/SosomLab/nexa-memkeeper/releases/tag/0.6.1)** — 자산 4종을 **워크플로가 자동 생성·첨부**(0.6.0에서는 설치본 ZIP을 수동 업로드했다).
+- 앱 동작 변경 없음 — 포장 파이프라인 검증이 목적.
+- 패키지 매니저 자동 게시는 계속 **꺼짐**(변수 미설정).
+- 상세 → [journal/2026-08-07](journal/2026-08-07.md)
+
+## 직전(2026-08-07 24차) — 배포 완료 · Wiki 공개
 
 - **[0.6.0 릴리스](https://github.com/SosomLab/nexa-memkeeper/releases/tag/0.6.0)** — 자산 4종(설치본 exe·설치본 ZIP·포터블 ZIP·SHA256SUMS).
 - **[Wiki](https://github.com/SosomLab/nexa-memkeeper/wiki) 7쪽 공개** — 기능·정리 영역·설정·설치·구조·문제 해결 + 스크린샷 4종.
