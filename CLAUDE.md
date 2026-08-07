@@ -6,7 +6,7 @@
 ## 1. 이 프로젝트는
 
 **Nexa MemKeeper** = Windows **시스템 트레이 상주 초경량 메모리 최적화 도구** — 지속 관찰·회수로 여유 메모리 확보, Top 5 점유 팝업·프로세스 트리 뷰(쓰레드)·선택 종료/회수·간단 설정. **도구 자신의 점유 최소화가 정체성**(유휴 RSS ≤5MB 제안). 상세 [docs/00](docs/00-vision.md)·[docs/05](docs/05-requirements.md).
-현 단계: **`0.6.2` 릴리스(08-07) — M0~M5 구현 완료** — 작업 관리자식 목록·검색·핫키·다국어(기본 영어)까지 포함. exe 0.64MB·유휴 RSS 1.30MB·테스트 55 green·포터블 ZIP 355KB. GitHub Actions가 태그 push로 설치본·포터블 ZIP을 Release에 올린다. 잔여 = 설치본 실검증(M5-3)·패키지 매니저 첫 등록(M5-5, 게시 변수 off). **효용성 실측([21](docs/21-effectiveness-measurement.md)) 결론: 평상시 주기 정리는 손해 — 기본값 변경 없음, 후속 E-1~E-3.**
+현 단계: **`0.6.2` 배포 완료(08-07) + 08-08 후속 작업 반영** — 알림에 Active 감소분 병기(E-1)·주기 정리 비권장 표시(E-2)·고압력 재측정(E-3)·열 폭/창 위치 기억(M3-4)·워치리스트 표적 트림(X-1)·전체화면 억제(X-2)·정리 히스토리(X-3). exe 0.64MB·유휴 RSS 1.34MB·테스트 57 green. **효용성 실측([21](docs/21-effectiveness-measurement.md)) 결론: 평상시·중압력 모두 주기 정리는 이득 없음 — 기본값 변경 없음.** 다음 릴리스는 이 변경분을 담아 태그하면 된다(태그 push는 별도 승인).
 
 <!-- 이전: M0~M4 완료(08-07 11차) — 트레이 셸·정리 엔진(영역 ①~⑤)·Top 5 팝업·메인 화면·설정 창(자동 정리 포함). exe 0.51MB·상주 유휴 1.31MB·테스트 37 green. 실기 QA 후 0.5.0 승격 -->
 
@@ -53,9 +53,9 @@
 
 1. 이 CLAUDE.md + [docs/STATUS.md](docs/STATUS.md) → 2. [DEVLOG](docs/DEVLOG.md) 최상단 + 최신 journal → 3. 할 일 = [docs/TODO.md](docs/TODO.md)(P-1부터 순차).
 
-## 5. 다음 단계 (2026-08-07 27차 갱신)
+## 5. 다음 단계 (2026-08-08 7차 갱신)
 
-1. **E-1 — 알림 회수량에 `Active` 감소분 병기**(정직성 — 현재 표기는 실제의 1/5에 못 미친다, [21 §2-1](docs/21-effectiveness-measurement.md)).
-2. **M5-3 — 설치본 실검증**: [최신 릴리스](https://github.com/SosomLab/nexa-memkeeper/releases/latest) 자산으로 설치/제거 왕복([20 §5](docs/20-packaging.md)).
-3. **M5-5 — 패키지 매니저 첫 등록**(winget PR 2건 · choco 모더레이션) → 변수 `WINGET_PUBLISH`·`CHOCO_PUSH` on. 🔴 사용자 판단.
-4. E-2(주기 정리 비권장 근거 문구) · E-3(고압력 재측정) · M3-4(열 폭·창 위치 기억) · 기능 후보 X-1~X-7([05 §5](docs/05-requirements.md))은 판단 대기.
+1. **M5-3 — 설치본 실검증**: [최신 릴리스](https://github.com/SosomLab/nexa-memkeeper/releases/latest) 자산으로 설치 → 상주 → 제거 왕복([20 §5](docs/20-packaging.md)). P0인데 아직 미확인.
+2. **M5-5 — 패키지 매니저 첫 등록**(winget PR 2건 · choco 모더레이션) → 저장소 변수 `WINGET_PUBLISH`·`CHOCO_PUSH` on. 🔴 사용자 판단.
+3. **다음 릴리스 태그**(0.7.0 제안) — 08-08 기능이 다 들어갔다. 🔴 태그 push는 별도 승인.
+4. 남은 기능 후보: X-1 **설정 UI**(현재 파일 설정만) · X-4(배터리 인식) · X-5(부팅 후 지연 시작) · X-6(트레이 표시 모드) — [05 §5](docs/05-requirements.md).
