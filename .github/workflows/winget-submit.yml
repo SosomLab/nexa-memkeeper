@@ -1,0 +1,101 @@
+# winget 최초 등록 — `microsoft/winget-pkgs`에 매니페스트 PR을 연다(설치형·포터블 2건).
+#
+# 왜 별도 워크플로인가: 릴리스 워크플로의 `wingetcreate update`는 **이미 등록된 패키지**를 갱신하는
+# 명령이라 첫 등록에는 쓸 수 없다. 첫 제출은 우리가 들고 있는 매니페스트 원본
+# (`packaging/winget/**`)에 버전·해시를 채워 `wingetcreate submit`으로 올린다.
+# 한 번 등록되고 나면 이후 버전은 release.yml이 자동으로 갱신한다.
+#
+# 실행: Actions > "winget submit" > Run workflow (버전 입력, 기본 = 최신 릴리스 태그)
+#   - 저장소 변수 `WINGET_PUBLISH=true` + 시크릿 `WINGET_TOKEN`(public_repo 스코프)이 있어야 실제로 올라간다.
+#   - 둘 중 하나라도 없으면 **매니페스트만 만들어 아티팩트로 남기고 멈춘다**(안전 기본값).
+name: winget submit
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "등록할 버전(비우면 최신 릴리스 태그)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    runs-on: windows-latest
+    env:
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 버전·자산 해시 확인 (Release가 이미 있어야 한다)
+        id: rel
+        shell: pwsh
+        run: |
+          $ver = "${{ inputs.version }}"
+          if (-not $ver) {
+            $ver = (gh release view --json tagName --jq .tagName).Trim()
+          }
+          $ver = $ver.TrimStart("v")
+          $base = "https://github.com/${{ github.repository }}/releases/download/$ver"
+          # 해시는 자산을 직접 받아 계산한다 — Release에 올라간 **그 파일**이 기준이다.
+          curl.exe -sL -o setup.exe "$base/NexaMemKeeper-$ver-setup.exe"
+          curl.exe -sL -o portable.zip "$base/NexaMemKeeper-$ver-portable.zip"
+          foreach ($f in "setup.exe", "portable.zip") {
+            if ((Get-Item $f).Length -lt 100KB) { throw "자산을 받지 못했습니다: $f (버전 $ver 확인)" }
+          }
+          $date = (gh release view $ver --json publishedAt --jq .publishedAt).Substring(0, 10)
+          "version=$ver"                                                   | Out-File $env:GITHUB_OUTPUT -Append
+          "date=$date"                                                     | Out-File $env:GITHUB_OUTPUT -Append
+          "setup=$((Get-FileHash setup.exe -Algorithm SHA256).Hash)"       | Out-File $env:GITHUB_OUTPUT -Append
+          "portable=$((Get-FileHash portable.zip -Algorithm SHA256).Hash)" | Out-File $env:GITHUB_OUTPUT -Append
+          Write-Output "version=$ver date=$date"
+
+      - name: 매니페스트 렌더 (자리표시자 치환)
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.rel.outputs.version }}"
+          $map = @{
+            "SosomLab.NexaMemKeeper"          = "${{ steps.rel.outputs.setup }}"
+            "SosomLab.NexaMemKeeper.Portable" = "${{ steps.rel.outputs.portable }}"
+          }
+          foreach ($id in $map.Keys) {
+            $src = "packaging\winget\$id"
+            $dst = "out\$id"
+            New-Item -ItemType Directory -Force -Path $dst | Out-Null
+            Get-ChildItem "$src\*.yaml" | ForEach-Object {
+              (Get-Content $_.FullName -Raw).
+                Replace("{{VERSION}}", $ver).
+                Replace("{{SHA256}}", $map[$id]).
+                Replace("{{RELEASE_DATE}}", "${{ steps.rel.outputs.date }}") |
+                Set-Content (Join-Path $dst $_.Name) -Encoding utf8
+            }
+            Write-Output "── $id"
+            Get-ChildItem $dst | ForEach-Object { Write-Output "   $($_.Name)" }
+          }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: winget-manifests
+          path: out/**
+
+      # 실제 제출은 변수 + 토큰이 둘 다 있을 때만(다른 채널과 같은 스위치 규약 — docs/20 §7-1)
+      - name: winget-pkgs PR 2건 제출
+        if: env.WINGET_TOKEN != '' && vars.WINGET_PUBLISH == 'true'
+        shell: pwsh
+        run: |
+          curl.exe -L -o wingetcreate.exe https://aka.ms/wingetcreate/latest
+          foreach ($id in "SosomLab.NexaMemKeeper", "SosomLab.NexaMemKeeper.Portable") {
+            Write-Output "── submit $id"
+            .\wingetcreate.exe submit --token $env:WINGET_TOKEN "out\$id"
+            if ($LASTEXITCODE -ne 0) { throw "wingetcreate submit 실패($id): $LASTEXITCODE" }
+          }
+
+      - name: 제출을 건너뛴 경우 안내
+        if: env.WINGET_TOKEN == '' || vars.WINGET_PUBLISH != 'true'
+        shell: pwsh
+        run: |
+          Write-Output "매니페스트만 만들었습니다(아티팩트 winget-manifests)."
+          Write-Output "실제 제출하려면 시크릿 WINGET_TOKEN(public_repo) + 변수 WINGET_PUBLISH=true 가 필요합니다."
