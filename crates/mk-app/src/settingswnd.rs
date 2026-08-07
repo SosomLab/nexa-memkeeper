@@ -308,9 +308,16 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
     );
     label(hwnd, w!("임계값 (%, 50~95)"), x + 14, 60, 170, font);
     number(hwnd, ID_THRESHOLD, x + 200, 57, 70, font);
-    label(hwnd, w!("최소 간격 (초, 60~1800)"), x + 14, 86, 170, font);
+    label(
+        hwnd,
+        w!("최소 간격 (ms, 60000~1800000)"),
+        x + 14,
+        86,
+        170,
+        font,
+    );
     number(hwnd, ID_COOLDOWN, x + 200, 83, 70, font);
-    label(hwnd, w!("주기 정리 (분, 0=끔)"), x + 14, 112, 170, font);
+    label(hwnd, w!("주기 정리 (ms, 0=끔)"), x + 14, 112, 170, font);
     number(hwnd, ID_INTERVAL, x + 200, 109, 70, font);
 
     // ── 정리 영역
@@ -380,7 +387,14 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
 
     // ── 일반
     group(hwnd, w!("일반"), x, 336, gw, 150, font);
-    label(hwnd, w!("관찰 주기 (초, 2~30)"), x + 14, 360, 170, font);
+    label(
+        hwnd,
+        w!("관찰 주기 (ms, 2000~30000)"),
+        x + 14,
+        360,
+        170,
+        font,
+    );
     number(hwnd, ID_POLL, x + 200, 357, 70, font);
     label(
         hwnd,
@@ -448,15 +462,15 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
 unsafe fn load_into_ui(hwnd: HWND, s: &Settings) {
     set_check(hwnd, ID_AUTO_ENABLED, s.auto_enabled);
     let _ = SetDlgItemInt(hwnd, ID_THRESHOLD, s.threshold_percent, false);
-    let _ = SetDlgItemInt(hwnd, ID_COOLDOWN, s.cooldown_secs, false);
-    let _ = SetDlgItemInt(hwnd, ID_INTERVAL, s.interval_mins, false);
+    let _ = SetDlgItemInt(hwnd, ID_COOLDOWN, s.cooldown_ms, false);
+    let _ = SetDlgItemInt(hwnd, ID_INTERVAL, s.interval_ms, false);
     set_check(hwnd, ID_A_WS, s.areas.working_sets);
     set_check(hwnd, ID_A_SBLOW, s.areas.standby_low);
     set_check(hwnd, ID_A_SBALL, s.areas.standby_all);
     set_check(hwnd, ID_A_MOD, s.areas.modified);
     set_check(hwnd, ID_A_SYSWS, s.areas.system_ws);
     set_check(hwnd, ID_A_COMBINE, s.areas.combine);
-    let _ = SetDlgItemInt(hwnd, ID_POLL, s.poll_secs, false);
+    let _ = SetDlgItemInt(hwnd, ID_POLL, s.poll_ms, false);
     let _ = SetDlgItemInt(hwnd, ID_REFRESH_MS, s.list_refresh_ms, false);
     let _ = SetDlgItemInt(hwnd, ID_TOPN, s.topn, false);
     set_check(hwnd, ID_NOTIFY, s.notify);
@@ -470,15 +484,15 @@ unsafe fn save_from_ui(hwnd: HWND) -> bool {
     let mut s = crate::config::load();
     s.auto_enabled = get_check(hwnd, ID_AUTO_ENABLED);
     s.threshold_percent = GetDlgItemInt(hwnd, ID_THRESHOLD, None, false);
-    s.cooldown_secs = GetDlgItemInt(hwnd, ID_COOLDOWN, None, false);
-    s.interval_mins = GetDlgItemInt(hwnd, ID_INTERVAL, None, false);
+    s.cooldown_ms = GetDlgItemInt(hwnd, ID_COOLDOWN, None, false);
+    s.interval_ms = GetDlgItemInt(hwnd, ID_INTERVAL, None, false);
     s.areas.working_sets = get_check(hwnd, ID_A_WS);
     s.areas.standby_low = get_check(hwnd, ID_A_SBLOW);
     s.areas.standby_all = get_check(hwnd, ID_A_SBALL);
     s.areas.modified = get_check(hwnd, ID_A_MOD);
     s.areas.system_ws = get_check(hwnd, ID_A_SYSWS);
     s.areas.combine = get_check(hwnd, ID_A_COMBINE);
-    s.poll_secs = GetDlgItemInt(hwnd, ID_POLL, None, false);
+    s.poll_ms = GetDlgItemInt(hwnd, ID_POLL, None, false);
     s.list_refresh_ms = GetDlgItemInt(hwnd, ID_REFRESH_MS, None, false);
     s.topn = GetDlgItemInt(hwnd, ID_TOPN, None, false);
     s.notify = get_check(hwnd, ID_NOTIFY);

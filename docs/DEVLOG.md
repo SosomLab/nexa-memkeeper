@@ -4,6 +4,7 @@
 
 ## 2026-08-07
 
+- 18차: 설정 시간 단위를 전부 ms로 통일(poll_ms·cooldown_ms·interval_ms) + 구 키 1회 마이그레이션. 실기로 구 파일 → ms 재작성 확인. 테스트 38 green. → [journal/2026-08-07](journal/2026-08-07.md)
 - 17차: M4 설정 구현(`feat/m4-settings`) — settings.ini 파싱/검증·설정 창·자동 정리(임계값/쿨다운/주기)·영역 ③④⑤·앱 매니페스트. 설정 창 크기 QA 수정(AdjustWindowRect). 테스트 37 green. → [journal/2026-08-07](journal/2026-08-07.md)
 - 16차: 진행사항 최신화 — README·CLAUDE·MILESTONES·TODO·05·09의 불일치 6건 정정 후 브랜치 병합·push. → [journal/2026-08-07](journal/2026-08-07.md)
 - 15차: 트리 기본 보기 회귀 해결(부모 접힘으로 자식이 안 보이던 문제) — 기본 평면 목록·보기 메뉴·타이핑 검색. 앱 아이콘 신규(nexa-dir2 계열 + 80% 게이지·RAM·회수 화살표) exe 임베드. → [journal/2026-08-07](journal/2026-08-07.md)

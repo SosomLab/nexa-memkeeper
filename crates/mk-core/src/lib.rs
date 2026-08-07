@@ -51,18 +51,18 @@ pub fn level_with(used_percent: u32, warn: u32, danger: u32) -> Level {
 }
 
 /// 자동 정리를 지금 실행해야 하는가(FR-4 트리거) — 임계값·쿨다운·주기를 한 곳에서 판정한다.
-/// `since_last_secs` = 마지막 정리 이후 경과(초). 정리 이력이 없으면 `u64::MAX`를 넘긴다.
-pub fn should_auto_clean(s: &Settings, used_percent: u32, since_last_secs: u64) -> bool {
+/// `since_last_ms` = 마지막 정리 이후 경과(ms — 설정과 같은 단위). 이력이 없으면 `u64::MAX`.
+pub fn should_auto_clean(s: &Settings, used_percent: u32, since_last_ms: u64) -> bool {
     if !s.auto_enabled {
         return false;
     }
-    if since_last_secs < s.cooldown_secs as u64 {
+    if since_last_ms < s.cooldown_ms as u64 {
         return false; // 쿨다운 중 — 임계값을 넘겨도 참는다(진동 방지)
     }
     if used_percent >= s.threshold_percent {
         return true;
     }
-    s.interval_mins > 0 && since_last_secs >= s.interval_mins as u64 * 60
+    s.interval_ms > 0 && since_last_ms >= s.interval_ms as u64
 }
 
 /// 툴팁·알림용 용량 문자열 — MB 고정, 소수 1자리(docs/05 FR-1).
@@ -549,21 +549,22 @@ mod tests {
 
     #[test]
     fn auto_clean_respects_threshold_cooldown_and_interval() {
-        let mut s = Settings::default(); // 임계 90%, 쿨다운 300초, 주기 off
-                                         // 임계 미만 → 실행 안 함
+        // 단위는 전부 ms(08-07 통일) — 기본 임계 90%, 쿨다운 300000ms, 주기 off
+        let mut s = Settings::default();
+        // 임계 미만 → 실행 안 함
         assert!(!should_auto_clean(&s, 85, u64::MAX));
         // 임계 이상 + 쿨다운 지남 → 실행
-        assert!(should_auto_clean(&s, 90, 301));
+        assert!(should_auto_clean(&s, 90, 300_001));
         // 임계 이상이어도 쿨다운 중이면 참는다(진동 방지)
-        assert!(!should_auto_clean(&s, 99, 120));
+        assert!(!should_auto_clean(&s, 99, 120_000));
         // 자동 정리 off면 무조건 안 함
         s.auto_enabled = false;
         assert!(!should_auto_clean(&s, 99, u64::MAX));
         // 주기 정리: 임계 미만이어도 경과 시간이 주기를 넘으면 실행
         s.auto_enabled = true;
-        s.interval_mins = 30;
-        assert!(!should_auto_clean(&s, 10, 29 * 60));
-        assert!(should_auto_clean(&s, 10, 30 * 60));
+        s.interval_ms = 1_800_000; // 30분
+        assert!(!should_auto_clean(&s, 10, 1_799_000));
+        assert!(should_auto_clean(&s, 10, 1_800_000));
     }
 
     #[test]
