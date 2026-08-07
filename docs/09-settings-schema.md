@@ -57,6 +57,11 @@
 
 - **보호 고정 목록([05 §4-4](05-requirements.md))은 코드 내장 — ini로 해제 불가**(안전 규율 15 §4).
 
+> 📄 **`history.csv`**(X-3, 08-08) — 설정 파일과 **같은 폴더**에 정리 기록이 쌓인다.
+> 열: `time,trigger,avail_mb,active_mb,partial`. `trigger`는 `manual`·`hotkey`·`threshold`·
+> `interval`·`lowmem` 중 하나다. 최근 **200줄**만 남기며, 메인 화면 [메모리] > [정리 기록]에서 연다.
+> 설정이 아니라 기록이므로 스키마 검증 대상이 아니다.
+
 ## 5. `[watch]` — 프로세스 워치리스트 자동 트림 (X-1, 08-08 구현)
 
 | 키 | 형 | 기본 | 비고 |

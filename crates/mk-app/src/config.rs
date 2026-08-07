@@ -92,3 +92,39 @@ pub fn save(s: &Settings) -> bool {
     }
     std::fs::write(path, s.to_ini()).is_ok()
 }
+
+/// 정리 기록 파일(X-3) — 설정 파일과 **같은 폴더**에 둔다(포터블이면 같이 따라간다).
+pub fn history_path() -> std::path::PathBuf {
+    settings_path().with_file_name("history.csv")
+}
+
+/// 정리 1회를 기록에 남긴다(X-3). 실패해도 조용히 넘어간다 — 기록은 부가 기능이고,
+/// 이것 때문에 정리 알림이 늦어지거나 막히면 안 된다.
+///
+/// 최근 **200줄만** 남긴다. 상주 도구가 파일을 무한정 키우면 그 자체가 민폐다.
+pub fn append_history(line: &str) {
+    let path = history_path();
+    if let Some(dir) = path.parent() {
+        if std::fs::create_dir_all(dir).is_err() {
+            return;
+        }
+    }
+    let header = "time,trigger,avail_mb,active_mb,partial";
+    let mut lines: Vec<String> = std::fs::read_to_string(&path)
+        .map(|t| t.lines().map(str::to_string).collect())
+        .unwrap_or_default();
+    if lines.first().map(|l| l.as_str()) != Some(header) {
+        lines.clear();
+        lines.push(header.to_string());
+    }
+    lines.push(line.to_string());
+    // 머리글 1줄 + 기록 200줄
+    if lines.len() > 201 {
+        let cut = lines.len() - 200;
+        lines.drain(1..=cut);
+    }
+    // CRLF로 쓴다 — 메모장으로 열어 보는 사람이 있다(CSV는 그 자리에서 읽혀야 한다)
+    let mut text = lines.join("\r\n");
+    text.push_str("\r\n");
+    let _ = std::fs::write(path, text);
+}

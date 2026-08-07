@@ -270,6 +270,12 @@ const KO: &[(&str, &str)] = &[
         "Skip automatic cleanup while a game or presentation is full screen",
         "게임·발표가 전체화면일 때는 자동 정리를 건너뜁니다",
     ),
+    ("Cleanup History(&H)…", "정리 기록(&H)…"),
+    ("Cleanup History", "정리 기록"),
+    (
+        "No cleanups have been recorded yet.",
+        "아직 정리한 기록이 없습니다.",
+    ),
     (
         "Also clean when Windows signals low memory",
         "Windows가 메모리 부족을 알리면 함께 정리",

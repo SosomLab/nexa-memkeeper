@@ -24,7 +24,9 @@ use windows::Win32::System::Memory::{
 use windows::Win32::System::ProcessStatus::{
     K32EmptyWorkingSet, K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS,
 };
-use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+use windows::Win32::System::SystemInformation::{
+    GetLocalTime, GlobalMemoryStatusEx, MEMORYSTATUSEX,
+};
 use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     RegisterHotKey, UnregisterHotKey, HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT,
@@ -83,6 +85,8 @@ thread_local! {
     static LAST_CLEAN: Cell<Option<(Instant, u32)>> = const { Cell::new(None) };
     /// 전역 핫키 등록 여부(M4-2) — 재설정 전 해제해야 하므로 상태를 들고 있는다.
     static HOTKEY_ON: Cell<bool> = const { Cell::new(false) };
+    /// 이번 정리를 일으킨 계기(X-3 기록용) — 수동/핫키/임계·주기/저메모리.
+    static CLEAN_TRIGGER: std::cell::RefCell<&'static str> = const { std::cell::RefCell::new("manual") };
     /// 워치리스트로 트림한 시각(PID → 시각) — 같은 프로세스를 연달아 트림하지 않기 위한 쿨다운(X-1).
     static WATCH_LAST: std::cell::RefCell<std::collections::HashMap<u32, Instant>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
@@ -186,6 +190,17 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
             let outcome = mk_core::decode_clean_result(wp.0 as u32);
             if let Some(o) = outcome {
                 LAST_CLEAN.set(Some((Instant::now(), o.mb)));
+                // 기록은 **표시값과 같은 숫자**로 남긴다(회수 MB + Active 감소분) — 나중에
+                // "그때 실제로 얼마나 걷혔나"를 다시 따질 수 있어야 한다(X-3 · docs/21 §2-1).
+                let trigger = CLEAN_TRIGGER.with(|t| *t.borrow());
+                crate::config::append_history(&format!(
+                    "{},{},{},{},{}",
+                    now_stamp(),
+                    trigger,
+                    o.mb,
+                    o.active_mb,
+                    o.partial
+                ));
             }
             let (title, body) = mk_core::clean_report(outcome);
             notify_balloon(hwnd, &title, &body, outcome.is_some());
@@ -195,7 +210,7 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
             LRESULT(0)
         }
         WM_HOTKEY => {
-            spawn_clean(hwnd); // 전역 핫키 = '지금 정리'(M4-2)
+            spawn_clean_as(hwnd, "hotkey"); // 전역 핫키 = '지금 정리'(M4-2)
             LRESULT(0)
         }
         WM_DESTROY => {
@@ -431,7 +446,15 @@ unsafe fn auto_clean_if_due(hwnd: HWND) {
     let due =
         SETTINGS.with(|c| mk_core::should_auto_clean_full(&c.borrow(), percent, since, low, full));
     if due {
-        spawn_clean(hwnd);
+        // 같은 자동 정리라도 계기가 다르면 나중에 해석이 달라진다 — 기록에 구분해 남긴다
+        let why = if low {
+            "lowmem"
+        } else if percent >= SETTINGS.with(|c| c.borrow().threshold_percent) {
+            "threshold"
+        } else {
+            "interval"
+        };
+        spawn_clean_as(hwnd, why);
     }
 }
 
@@ -551,9 +574,15 @@ pub(crate) fn request_worker(hwnd: HWND, action: &'static str, pid: u32) {
 /// 정리 워커 기동(DR-7) — 별도 스레드에서 프로세스 실행·대기 후 결과를 PostMessage.
 /// 워커 크래시(code=None)도 WORKER_ERR로 통지 — 셸은 어떤 실패에도 죽지 않는다(docs/08 §4-4).
 fn spawn_clean(hwnd: HWND) {
+    spawn_clean_as(hwnd, "manual")
+}
+
+/// 계기를 남기며 정리 실행(X-3) — 기록에 "왜 돌았는지"가 없으면 나중에 해석할 수 없다.
+fn spawn_clean_as(hwnd: HWND, trigger: &'static str) {
     if CLEAN_BUSY.get() {
         return;
     }
+    CLEAN_TRIGGER.with(|t| *t.borrow_mut() = trigger);
     CLEAN_BUSY.set(true);
     let hwnd_raw = hwnd.0 as usize;
     std::thread::spawn(move || {
@@ -577,6 +606,15 @@ fn spawn_clean(hwnd: HWND) {
             );
         }
     });
+}
+
+/// 기록용 현지 시각 문자열 `YYYY-MM-DD HH:MM:SS` — 날짜 crate 없이 Win32로 얻는다(DR-5).
+fn now_stamp() -> String {
+    let t = unsafe { GetLocalTime() };
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+        t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond
+    )
 }
 
 /// 현재 프로세스 승격 여부(관리자) — 메뉴 표시 제어.

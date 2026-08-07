@@ -92,6 +92,7 @@ const ID_REFRESH_1S: usize = 230;
 const ID_REFRESH_2S: usize = 231;
 const ID_REFRESH_5S: usize = 232;
 const ID_ABOUT: usize = 240;
+const ID_HISTORY: usize = 244;
 const ID_VIEW_FLAT: usize = 250;
 const ID_VIEW_TREE: usize = 251;
 const ID_EXPAND_ALL: usize = 252;
@@ -286,6 +287,8 @@ unsafe fn build_menu(hwnd: HWND) -> HMENU {
 
     let mem = CreatePopupMenu().unwrap_or_default();
     let _ = AppendMenuW(mem, MF_STRING, ID_CLEAN_ALL, tw!("Clean Now(&C) — All"));
+    // 정리 기록(X-3) — 우리가 무엇을 했는지 사용자가 직접 확인할 수 있어야 한다
+    let _ = AppendMenuW(mem, MF_STRING, ID_HISTORY, tw!("Cleanup History(&H)…"));
     let _ = AppendMenuW(mem, MF_SEPARATOR, 0, None);
     let _ = AppendMenuW(
         mem,
@@ -738,6 +741,20 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
         }
         ID_CLOSE => {
             let _ = DestroyWindow(hwnd);
+        }
+        ID_HISTORY => {
+            // 기록은 CSV다 — 전용 뷰어를 만드는 대신 **기본 연결 프로그램**으로 연다.
+            // 파일이 없으면(아직 정리한 적 없음) 그 사실을 알린다(빈 창을 띄우지 않는다).
+            let path = crate::config::history_path();
+            if path.is_file() {
+                open_url(hwnd, &path.to_string_lossy());
+            } else {
+                info_box(
+                    hwnd,
+                    tr("Cleanup History"),
+                    tr("No cleanups have been recorded yet."),
+                );
+            }
         }
         ID_CLEAN_ALL => {
             let r = crate::worker::run_clean();
