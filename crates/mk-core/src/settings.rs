@@ -64,6 +64,10 @@ pub struct Settings {
     /// **저메모리 이벤트 트리거**(docs/07 §2) — Windows가 "여유 메모리 부족"을 알릴 때 즉시 정리.
     /// 폴링(주기·임계값)의 보조다. 쿨다운은 그대로 지켜지므로 연달아 돌지 않는다.
     pub low_memory_event: bool,
+    /// **전체화면 억제**(X-2) — 게임·발표 등 전체화면 중에는 자동 정리를 보류한다.
+    /// 정리에는 순간 멈춤이라는 대가가 있고([21](../../docs/21-effectiveness-measurement.md)),
+    /// 하필 그 순간이 프레임이 중요한 때다. 수동 정리·핫키는 그대로 동작한다.
+    pub suppress_fullscreen: bool,
     // [areas]
     pub areas: Areas,
     // [ui]
@@ -101,6 +105,7 @@ impl Default for Settings {
             cooldown_ms: 300_000,
             interval_ms: 0,
             low_memory_event: true,
+            suppress_fullscreen: true,
             areas: Areas::default(),
             topn: 5,
             list_refresh_ms: 2_000,
@@ -197,6 +202,9 @@ impl Settings {
             }
             ("auto", "cooldown_ms") => self.cooldown_ms = num.unwrap_or(self.cooldown_ms),
             ("auto", "interval_ms") => self.interval_ms = num.unwrap_or(self.interval_ms),
+            ("auto", "suppress_fullscreen") => {
+                self.suppress_fullscreen = parse_bool(value).unwrap_or(self.suppress_fullscreen)
+            }
             ("auto", "low_memory_event") => {
                 self.low_memory_event = parse_bool(value).unwrap_or(self.low_memory_event)
             }
@@ -308,6 +316,10 @@ impl Settings {
         out.push_str(&format!(
             "low_memory_event = {}\n",
             b(self.low_memory_event)
+        ));
+        out.push_str(&format!(
+            "suppress_fullscreen = {}\n",
+            b(self.suppress_fullscreen)
         ));
         self.push_unknown(&mut out, "auto");
 

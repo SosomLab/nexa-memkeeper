@@ -267,6 +267,10 @@ const KO: &[(&str, &str)] = &[
         "권장하지 않음 — 앱이 14초 안에 되찾아갑니다.",
     ),
     (
+        "Skip automatic cleanup while a game or presentation is full screen",
+        "게임·발표가 전체화면일 때는 자동 정리를 건너뜁니다",
+    ),
+    (
         "Also clean when Windows signals low memory",
         "Windows가 메모리 부족을 알리면 함께 정리",
     ),

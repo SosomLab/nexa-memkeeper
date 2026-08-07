@@ -21,7 +21,9 @@ use windows::Win32::System::Memory::{
     CreateMemoryResourceNotification, LowMemoryResourceNotification,
     QueryMemoryResourceNotification,
 };
-use windows::Win32::System::ProcessStatus::K32EmptyWorkingSet;
+use windows::Win32::System::ProcessStatus::{
+    K32EmptyWorkingSet, K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS,
+};
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -29,8 +31,9 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     MOD_SHIFT, MOD_WIN,
 };
 use windows::Win32::UI::Shell::{
-    ShellExecuteW, Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_TIP, NIIF_ERROR,
-    NIIF_INFO, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
+    SHQueryUserNotificationState, ShellExecuteW, Shell_NotifyIconW, NIF_ICON, NIF_INFO,
+    NIF_MESSAGE, NIF_TIP, NIIF_ERROR, NIIF_INFO, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
+    QUNS_BUSY, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateIconIndirect, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyIcon,
@@ -138,6 +141,7 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                 dismiss_balloon(hwnd);
             } else {
                 tray_update(hwnd);
+                trim_if_over_budget(); // 예산을 넘으면 스스로 반납(NFR-3·DR-8)
                 auto_clean_if_due(hwnd);
             }
             LRESULT(0)
@@ -337,6 +341,35 @@ unsafe fn apply_hotkey(hwnd: HWND, hk: Option<mk_core::Hotkey>) {
 }
 
 /// 자동 정리 판정(FR-4) — 임계값·쿨다운·주기는 mk-core가 판단한다.
+/// 유휴 상태에서 워킹셋이 예산을 넘으면 반납한다(NFR-3 · DR-8).
+///
+/// 팝업을 띄우면 목록 버퍼·GDI·공유 DLL 페이지가 들어와 워킹셋이 1.3MB → 11MB까지 오른다.
+/// 닫으면 대부분 스스로 돌아오지만(08-08 실측 2.7MB), 그러지 못한 경우를 대비한 **안전망**이다.
+/// 플래그로 "팝업을 띄웠었나"를 좇는 대신 **지금 넘치는가**만 본다 — 어떤 경로로 불어났든 스스로
+/// 회복하고, 조건이 아닐 때는 아무 일도 하지 않아 유휴 CPU도 그대로다.
+unsafe fn trim_if_over_budget() {
+    // 팝업이 떠 있는 동안은 건드리지 않는다(방금 읽어 온 페이지를 도로 뱉으면 갱신이 느려진다)
+    if let Ok(h) = FindWindowW(w!("NexaMemKeeperPopup"), None) {
+        if !h.is_invalid() {
+            return;
+        }
+    }
+    let size = std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
+    // cb를 채우지 않으면 호출이 조용히 실패한다(반환값만 보고 넘기면 원인을 못 찾는다 — 08-08)
+    let mut pmc = PROCESS_MEMORY_COUNTERS {
+        cb: size,
+        ..Default::default()
+    };
+    if K32GetProcessMemoryInfo(GetCurrentProcess(), &mut pmc, size).as_bool()
+        && pmc.WorkingSetSize > BUDGET_RSS
+    {
+        self_trim();
+    }
+}
+
+/// 유휴 워킹셋 예산(DR-8) — 이 값을 넘으면 스스로 반납한다.
+const BUDGET_RSS: usize = 5 * 1024 * 1024;
+
 unsafe fn auto_clean_if_due(hwnd: HWND) {
     if CLEAN_BUSY.get() {
         return;
@@ -347,9 +380,27 @@ unsafe fn auto_clean_if_due(hwnd: HWND) {
         .unwrap_or(u64::MAX);
     let percent = read_mem().used_percent();
     let low = low_memory_now();
-    let due = SETTINGS.with(|c| mk_core::should_auto_clean_with(&c.borrow(), percent, since, low));
+    let full = fullscreen_now();
+    let due =
+        SETTINGS.with(|c| mk_core::should_auto_clean_full(&c.borrow(), percent, since, low, full));
     if due {
         spawn_clean(hwnd);
+    }
+}
+
+/// 지금 **전체화면·발표 모드**인가(X-2) — 게임·발표 중 자동 정리를 보류하는 판단 재료.
+///
+/// `SHQueryUserNotificationState`는 Windows가 알림을 띄워도 되는지 판단할 때 쓰는 값이라
+/// "지금 방해하면 안 되는 상태"를 그대로 알려 준다. 알림을 미룰 상황이면 정리도 미루는 게 맞다.
+/// 조회에 실패하면 **false**(정리를 막지 않는다 — 기능이 조용히 멈추는 쪽보다 낫다).
+unsafe fn fullscreen_now() -> bool {
+    match SHQueryUserNotificationState() {
+        Ok(state) => {
+            state == QUNS_BUSY
+                || state == QUNS_RUNNING_D3D_FULL_SCREEN
+                || state == QUNS_PRESENTATION_MODE
+        }
+        Err(_) => false,
     }
 }
 

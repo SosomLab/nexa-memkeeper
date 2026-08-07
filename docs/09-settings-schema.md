@@ -34,7 +34,7 @@
 | `cooldown_ms` | u32 | `300000` | 60000~1800000 — 연속 실행 방지 | 〃 |
 | `interval_ms` | u32 | `0`(off) | 0 \| 600000~14400000 — 주기 정리(임계값과 독립) | 〃 |
 | `low_memory_event` | bool | **`true`** | Windows의 저메모리 알림(`LowMemoryResourceNotification`)이 켜지면 임계값 미만이어도 정리. **쿨다운은 그대로 적용**(M5-1 — [07 §2](07-adr-0002-memory-reclaim.md)) | 〃 |
-| `suppress_fullscreen` | bool | `true` | 전체화면(게임·발표) 중 자동 정리 보류 — `SHQueryUserNotificationState`(후보 X-2) | 〃 |
+| `suppress_fullscreen` | bool | **`true`** | 전체화면(게임·발표) 중 **자동** 정리 보류 — `SHQueryUserNotificationState`가 알림을 미룰 상태로 보고할 때. 수동 정리·핫키는 그대로(X-2, 08-08 구현) | 〃 |
 | `on_battery` | enum | `normal` | `normal` \| `pause`(배터리 시 자동 정리 보류) (후보 X-4) | 〃 |
 
 ## 3. `[areas]` — 정리 영역 (FR-4 ①~⑥, 기본 = 안전 우선)

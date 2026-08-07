@@ -29,9 +29,9 @@ const CLASS: PCWSTR = w!("NexaMemKeeperSettings");
 /// **클라이언트 영역** 크기(모든 레이아웃 좌표의 기준). 창 크기는 여기에 테두리·제목 표시줄을
 /// 더해 [`AdjustWindowRect`]로 역산한다 — 이 값을 그대로 창 크기로 넘기면 아래쪽이 잘린다(08-07 QA).
 const W: i32 = 452;
-const H: i32 = 650;
+const H: i32 = 672;
 /// 하단 버튼 줄 y좌표(콘텐츠 마지막 + 여백).
-const BTN_Y: i32 = 598;
+const BTN_Y: i32 = 620;
 
 // 컨트롤 ID
 const ID_AUTO_ENABLED: i32 = 1001;
@@ -45,6 +45,7 @@ const ID_A_MOD: i32 = 1013;
 const ID_A_SYSWS: i32 = 1014;
 const ID_A_COMBINE: i32 = 1015;
 const ID_LOWMEM: i32 = 1016;
+const ID_FULLSCREEN: i32 = 1017;
 const ID_POLL: i32 = 1020;
 const ID_NOTIFY: i32 = 1021;
 const ID_HIDE_PSEUDO: i32 = 1022;
@@ -464,7 +465,7 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
     const NUM_X: i32 = 232;
     const NUM_W: i32 = 96;
     // ── 자동 정리
-    group(hwnd, tw!("Automatic Cleanup"), x, 10, gw, 176, font);
+    group(hwnd, tw!("Automatic Cleanup"), x, 10, gw, 198, font);
     checkbox(
         hwnd,
         tw!("Clean automatically when memory usage exceeds the threshold"),
@@ -504,6 +505,16 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
         gw - 30,
         font,
     );
+    // 전체화면 억제(X-2) — 게임·발표 중에는 자동 정리를 보류한다(수동 정리는 그대로).
+    checkbox(
+        hwnd,
+        tw!("Skip automatic cleanup while a game or presentation is full screen"),
+        ID_FULLSCREEN,
+        x + 14,
+        178,
+        gw - 30,
+        font,
+    );
     // 저메모리 이벤트(M5-1) — 임계값에 못 미쳐도 OS가 부족을 알리면 즉시 정리(쿨다운은 지킨다)
     checkbox(
         hwnd,
@@ -516,13 +527,13 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
     );
 
     // ── 정리 영역
-    group(hwnd, tw!("Cleanup Areas"), x, 196, gw, 178, font);
+    group(hwnd, tw!("Cleanup Areas"), x, 218, gw, 178, font);
     checkbox(
         hwnd,
         tw!("(1) Process working set trim (safe)"),
         ID_A_WS,
         x + 14,
-        218,
+        240,
         gw - 30,
         font,
     );
@@ -531,7 +542,7 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
         tw!("(2) Low-priority standby purge (safe)"),
         ID_A_SBLOW,
         x + 14,
-        240,
+        262,
         gw - 30,
         font,
     );
@@ -540,7 +551,7 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
         tw!("(3) Full standby purge — file cache lost"),
         ID_A_SBALL,
         x + 14,
-        262,
+        284,
         gw - 30,
         font,
     );
@@ -549,7 +560,7 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
         tw!("(4) Flush modified pages — disk writes"),
         ID_A_MOD,
         x + 14,
-        284,
+        306,
         gw - 30,
         font,
     );
@@ -558,7 +569,7 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
         tw!("(5) System working set — cache reload cost"),
         ID_A_SYSWS,
         x + 14,
-        306,
+        328,
         gw - 30,
         font,
     );
@@ -567,7 +578,7 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
         tw!("(6) Page combining — slow, admin only"),
         ID_A_COMBINE,
         x + 14,
-        328,
+        350,
         gw - 30,
         font,
     );
@@ -575,39 +586,39 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
         hwnd,
         tw!("(3)~(6) need admin rights; brief slowdown possible."),
         x + 14,
-        350,
+        372,
         gw - 30,
         font,
     );
 
     // ── 일반
-    group(hwnd, tw!("General"), x, 384, gw, 202, font);
+    group(hwnd, tw!("General"), x, 406, gw, 202, font);
     label(
         hwnd,
         tw!("Poll interval (ms, 2000~30000)"),
         x + 14,
-        408,
+        430,
         LBL_W,
         font,
     );
-    number(hwnd, ID_POLL, x + NUM_X, 405, NUM_W, font);
+    number(hwnd, ID_POLL, x + NUM_X, 427, NUM_W, font);
     label(
         hwnd,
         tw!("List refresh (ms, 500~10000)"),
         x + 14,
-        434,
+        456,
         LBL_W,
         font,
     );
-    number(hwnd, ID_REFRESH_MS, x + NUM_X, 431, NUM_W, font);
-    label(hwnd, w!("Top N (3~10)"), x + 14, 460, LBL_W, font);
-    number(hwnd, ID_TOPN, x + NUM_X, 457, NUM_W, font);
+    number(hwnd, ID_REFRESH_MS, x + NUM_X, 453, NUM_W, font);
+    label(hwnd, w!("Top N (3~10)"), x + 14, 482, LBL_W, font);
+    number(hwnd, ID_TOPN, x + NUM_X, 479, NUM_W, font);
     checkbox(
         hwnd,
         tw!("Notify on cleanup"),
         ID_NOTIFY,
         x + 14,
-        484,
+        506,
         190,
         font,
     );
@@ -616,7 +627,7 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
         tw!("Hide pseudo processes"),
         ID_HIDE_PSEUDO,
         x + 210,
-        484,
+        506,
         200,
         font,
     );
@@ -625,14 +636,14 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
         hwnd,
         tw!("Global hotkey (Clean Now)"),
         x + 14,
-        532,
+        554,
         LBL_W,
         font,
     );
-    hotkey_field(hwnd, ID_HOTKEY, x + NUM_X, 529, 140, font);
+    hotkey_field(hwnd, ID_HOTKEY, x + NUM_X, 551, 140, font);
     // 언어(i18n) — 기본 auto(OS 언어). 바꾸면 재시작 안내를 띄운다.
-    label(hwnd, tw!("Language"), x + 14, 558, LBL_W, font);
-    lang_combo(hwnd, ID_LANG, x + NUM_X, 555, 140, font);
+    label(hwnd, tw!("Language"), x + 14, 580, LBL_W, font);
+    lang_combo(hwnd, ID_LANG, x + NUM_X, 577, 140, font);
 
     // ── 버튼
     button(
@@ -664,6 +675,7 @@ unsafe fn load_into_ui(hwnd: HWND, s: &Settings) {
     let _ = SetDlgItemInt(hwnd, ID_COOLDOWN, s.cooldown_ms, false);
     let _ = SetDlgItemInt(hwnd, ID_INTERVAL, s.interval_ms, false);
     set_check(hwnd, ID_LOWMEM, s.low_memory_event);
+    set_check(hwnd, ID_FULLSCREEN, s.suppress_fullscreen);
     set_check(hwnd, ID_A_WS, s.areas.working_sets);
     set_check(hwnd, ID_A_SBLOW, s.areas.standby_low);
     set_check(hwnd, ID_A_SBALL, s.areas.standby_all);
@@ -688,6 +700,7 @@ unsafe fn save_from_ui(hwnd: HWND) -> bool {
     s.cooldown_ms = GetDlgItemInt(hwnd, ID_COOLDOWN, None, false);
     s.interval_ms = GetDlgItemInt(hwnd, ID_INTERVAL, None, false);
     s.low_memory_event = get_check(hwnd, ID_LOWMEM);
+    s.suppress_fullscreen = get_check(hwnd, ID_FULLSCREEN);
     s.areas.working_sets = get_check(hwnd, ID_A_WS);
     s.areas.standby_low = get_check(hwnd, ID_A_SBLOW);
     s.areas.standby_all = get_check(hwnd, ID_A_SBALL);

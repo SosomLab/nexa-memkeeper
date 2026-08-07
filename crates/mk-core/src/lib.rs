@@ -70,7 +70,24 @@ pub fn should_auto_clean_with(
     since_last_ms: u64,
     low_memory: bool,
 ) -> bool {
+    should_auto_clean_full(s, used_percent, since_last_ms, low_memory, false)
+}
+
+/// 위와 같되 **전체화면 여부**까지 본다(X-2).
+///
+/// 게임·발표 중에는 자동 정리를 보류한다 — 정리는 순간 멈춤을 만들고(docs/21), 하필 그 순간이
+/// 프레임이 중요한 때다. **수동 정리·핫키는 막지 않는다**: 사용자가 직접 누른 것은 의도한 행동이다.
+pub fn should_auto_clean_full(
+    s: &Settings,
+    used_percent: u32,
+    since_last_ms: u64,
+    low_memory: bool,
+    fullscreen: bool,
+) -> bool {
     if !s.auto_enabled {
+        return false;
+    }
+    if fullscreen && s.suppress_fullscreen {
         return false;
     }
     if since_last_ms < s.cooldown_ms as u64 {
@@ -1120,6 +1137,25 @@ mod tests {
             window_titles: vec![title.to_string()],
             ..p(pid, name, 100)
         }
+    }
+
+    #[test]
+    fn fullscreen_suppresses_only_automatic_cleanup() {
+        // X-2: 전체화면 중에는 임계값을 넘겨도, 저메모리 이벤트가 와도 자동 정리를 하지 않는다.
+        // (수동 정리는 이 판정을 거치지 않으므로 영향 없음 — 그래서 여기서 검증할 대상이 아니다)
+        let mut s = Settings::default();
+        s.threshold_percent = 90;
+        assert!(should_auto_clean_full(&s, 95, u64::MAX, false, false));
+        assert!(!should_auto_clean_full(&s, 95, u64::MAX, false, true));
+        assert!(
+            !should_auto_clean_full(&s, 10, u64::MAX, true, true),
+            "이벤트도 보류"
+        );
+        s.suppress_fullscreen = false;
+        assert!(
+            should_auto_clean_full(&s, 95, u64::MAX, false, true),
+            "옵션 off면 그대로 실행"
+        );
     }
 
     #[test]

@@ -239,6 +239,8 @@ unsafe extern "system" fn popup_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARA
         }
         WM_DESTROY => {
             let _ = KillTimer(Some(hwnd), TIMER_REFRESH);
+            // 워킹셋 반납은 여기서 하지 않는다 — 이 시점엔 아직 GDI·버퍼가 해제되기 전이라
+            // 트림해도 곧바로 되돌아온다(08-08 실측). 셸이 **닫힌 것을 확인한 뒤** 트림한다.
             LRESULT(0)
         }
         WM_NCDESTROY => {
