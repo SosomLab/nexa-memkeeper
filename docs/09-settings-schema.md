@@ -1,5 +1,9 @@
 # 09 · 설정 스키마 — `data\settings.ini` (M4 구현 SSOT)
 
+> **구현 상태(08-07, M4)**: 파싱·검증(mk-core `settings.rs`)·파일 I/O(mk-app `config.rs`)·설정 창 완료.
+> 미구현: `hotkey_clean`(전역 핫키 등록), `[watch]`(X-1 후보), `[exclude]`, `[auto] low_memory_event`,
+> `[areas] combine`(⑥ — M5). UI에 없는 키도 파일에 쓰면 보존되며, 구현 시 그대로 살아난다.
+
 > [05 §4](05-requirements.md) 설정 스펙의 구현 상세: 키 이름·형·기본값·범위·UI 배치·적용 시점.
 > 저장 위치: exe 옆 `data\settings.ini`(포터블), 쓰기 불가 시 `%LOCALAPPDATA%\NexaMemKeeper\`(FR-5).
 > **쓰기는 셸만, 워커는 읽기 전용**(DR-7 — IPC 최소 원칙). 저장 즉시 적용(재시작 불요).

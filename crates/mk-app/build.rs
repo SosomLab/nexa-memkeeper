@@ -46,12 +46,26 @@ fn main() {
         String::new()
     };
 
+    // 애플리케이션 매니페스트(RT_MANIFEST=24, ID 1) — 공용 컨트롤 v6·asInvoker.
+    let manifest_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("assets")
+        .join("app.manifest");
+    println!("cargo:rerun-if-changed={}", manifest_path.display());
+    let manifest_line = if manifest_path.is_file() {
+        format!(
+            "1 24 \"{}\"\n",
+            manifest_path.display().to_string().replace('\\', "/")
+        )
+    } else {
+        String::new()
+    };
+
     let rc_src = out.join("version.rc");
     let res = out.join("version.res");
     std::fs::write(
         &rc_src,
         format!(
-            r#"{icon_line}1 VERSIONINFO
+            r#"{icon_line}{manifest_line}1 VERSIONINFO
 FILEVERSION {a},{b},{c},0
 PRODUCTVERSION {a},{b},{c},0
 FILEOS 0x4

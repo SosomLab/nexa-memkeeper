@@ -326,6 +326,7 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
             let mut client = RECT::default();
             let _ = GetClientRect(hwnd, &mut client);
             let menu = build_menu(hwnd);
+            let cfg = crate::config::load(); // M4 — 저장된 보기 설정 반영
             STATE.with(|s| {
                 *s.borrow_mut() = Some(ListState {
                     procs: Vec::new(),
@@ -335,10 +336,10 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                     sel: (0, 0),
                     sort_key: SortKey::PrivateWs,
                     sort_asc: false, // 점유 큰 순 = 기본
-                    hide_pseudo: true,
-                    flat: true,
+                    hide_pseudo: cfg.hide_pseudo,
+                    flat: cfg.view_flat,
                     filter: String::new(),
-                    refresh_ms: crate::popup::REFRESH_MS,
+                    refresh_ms: cfg.list_refresh_ms,
                     font: make_font(-12, 400),
                     font_head: make_font(-12, 600),
                     font_glyph: make_font_face(GLYPH_SIZE, 400, w!("Segoe MDL2 Assets")),
@@ -347,8 +348,8 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                 })
             });
             reload();
-            sync_menu_checks(menu, crate::popup::REFRESH_MS, true);
-            SetTimer(Some(hwnd), TIMER_REFRESH, crate::popup::REFRESH_MS, None);
+            sync_menu_checks(menu, cfg.list_refresh_ms, cfg.hide_pseudo);
+            SetTimer(Some(hwnd), TIMER_REFRESH, cfg.list_refresh_ms, None);
             sync_scrollbar(hwnd);
             LRESULT(0)
         }

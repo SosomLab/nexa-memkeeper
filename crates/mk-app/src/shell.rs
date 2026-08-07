@@ -5,7 +5,7 @@
 use std::cell::Cell;
 use std::time::Instant;
 
-use mk_core::{level, Level, MemSnapshot};
+use mk_core::{level_with, Level, MemSnapshot};
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
@@ -42,10 +42,10 @@ const WM_TRAY: u32 = WM_APP + 1;
 const WM_WORKER_DONE: u32 = WM_APP + 2;
 /// 단일 프로세스 작업(trim/kill) 완료(wParam = 성공 여부, lParam = PID).
 const WM_ITEM_DONE: u32 = WM_APP + 3;
+/// 설정 창이 저장을 마쳤음(M4) — 셸이 settings.ini를 다시 읽어 즉시 반영.
+const WM_SETTINGS_CHANGED: u32 = WM_APP + 4;
 const TRAY_ID: u32 = 1;
 const TIMER_POLL: usize = 1;
-/// 관찰 폴링 주기(docs/05 §4-3 기본값 5초 — M4에서 설정으로 이동).
-const POLL_MS: u32 = 5_000;
 const CMD_EXIT: usize = 100;
 const CMD_CLEAN: usize = 101;
 const CMD_ELEVATE: usize = 102;
@@ -53,6 +53,9 @@ const CMD_LIST: usize = 103;
 const CMD_SETTINGS: usize = 104;
 
 thread_local! {
+    /// 현재 설정(M4 — settings.ini). 설정 창 저장 시 WM_SETTINGS_CHANGED로 다시 읽는다.
+    static SETTINGS: std::cell::RefCell<mk_core::Settings> =
+        std::cell::RefCell::new(mk_core::Settings::default());
     /// 직전 표시 %(같으면 아이콘 재생성 생략 — 유휴 CPU ~0% 게이트).
     static LAST_PERCENT: Cell<u32> = const { Cell::new(u32::MAX) };
     /// 현재 트레이 아이콘(교체 시 이전 것 파괴).
@@ -104,12 +107,19 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
     match msg {
         WM_CREATE => {
             TASKBAR_MSG.set(RegisterWindowMessageW(w!("TaskbarCreated")));
-            SetTimer(Some(hwnd), TIMER_POLL, POLL_MS, None);
+            apply_settings(hwnd); // settings.ini 로드 + 폴링 주기 반영
             tray_add(hwnd);
             self_trim();
             LRESULT(0)
         }
         WM_TIMER => {
+            tray_update(hwnd);
+            auto_clean_if_due(hwnd);
+            LRESULT(0)
+        }
+        WM_SETTINGS_CHANGED => {
+            apply_settings(hwnd);
+            LAST_PERCENT.set(u32::MAX); // 임계값이 바뀌었을 수 있으니 아이콘 강제 갱신
             tray_update(hwnd);
             LRESULT(0)
         }
@@ -214,8 +224,12 @@ unsafe fn fill_nid(hwnd: HWND, snap: &MemSnapshot) -> NOTIFYICONDATAW {
     nid
 }
 
-/// 풍선 알림(FR-4 결과 통지 — M4에서 notify 설정으로 on/off).
+/// 풍선 알림(FR-4 결과 통지). `notify = false`면 **실패만** 알린다 —
+/// 성공 알림은 끌 수 있어도 실패를 조용히 삼키지는 않는다(docs/07 §5 조용한 성공 금지 원칙).
 unsafe fn notify_balloon(hwnd: HWND, title: &str, body: &str, ok: bool) {
+    if ok && !SETTINGS.with(|c| c.borrow().notify) {
+        return;
+    }
     let mut nid = base_nid(hwnd);
     nid.uFlags = NIF_INFO;
     nid.dwInfoFlags = if ok { NIIF_INFO } else { NIIF_ERROR };
@@ -226,6 +240,58 @@ unsafe fn notify_balloon(hwnd: HWND, title: &str, body: &str, ok: bool) {
     let n = b.len().min(nid.szInfo.len() - 1);
     nid.szInfo[..n].copy_from_slice(&b[..n]);
     let _ = Shell_NotifyIconW(NIM_MODIFY, &nid);
+}
+
+/// 설정 로드 + 즉시 반영(폴링 타이머 재설정). 시작 시와 설정 저장 후에 호출.
+unsafe fn apply_settings(hwnd: HWND) {
+    let s = crate::config::load();
+    let poll_ms = s.poll_secs * 1000;
+    SETTINGS.with(|c| *c.borrow_mut() = s);
+    SetTimer(Some(hwnd), TIMER_POLL, poll_ms, None); // 같은 ID 재설정 = 주기 교체
+}
+
+/// 자동 정리 판정(FR-4) — 임계값·쿨다운·주기는 mk-core가 판단한다.
+unsafe fn auto_clean_if_due(hwnd: HWND) {
+    if CLEAN_BUSY.get() {
+        return;
+    }
+    let since = LAST_CLEAN
+        .get()
+        .map(|(at, _)| at.elapsed().as_secs())
+        .unwrap_or(u64::MAX);
+    let percent = read_mem().used_percent();
+    let due = SETTINGS.with(|c| mk_core::should_auto_clean(&c.borrow(), percent, since));
+    if due {
+        spawn_clean(hwnd);
+    }
+}
+
+/// 설정 창(워커 프로세스)이 저장 후 호출 — 상주 셸을 찾아 재적용을 알린다.
+pub(crate) fn notify_settings_changed() {
+    unsafe {
+        if let Ok(h) = FindWindowW(CLASS, None) {
+            if !h.is_invalid() {
+                let _ = PostMessageW(Some(h), WM_SETTINGS_CHANGED, WPARAM(0), LPARAM(0));
+            }
+        }
+    }
+}
+
+/// 설정 창 열기 — 이미 떠 있으면 앞으로 가져온다(워커 프로세스, DR-7).
+pub(crate) fn open_settings() {
+    unsafe {
+        if let Ok(h) = FindWindowW(w!("NexaMemKeeperSettings"), None) {
+            if !h.is_invalid() {
+                let _ = SetForegroundWindow(h);
+                return;
+            }
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        let _ = std::process::Command::new(exe)
+            .args(["--worker", "settings"])
+            .spawn();
+    }
 }
 
 /// 팝업 등 외부 모듈에서 정리 요청(팝업 [지금 정리] 버튼).
@@ -380,7 +446,12 @@ unsafe fn drop_icon() {
 
 /// 색 단계(docs/05 §4-3): 정상 녹색 / 주의(≥80%) 주황 / 위험(≥90%) 적색. COLORREF=0x00BBGGRR.
 pub(crate) fn level_color(percent: u32) -> COLORREF {
-    match level(percent) {
+    // 트레이 색 단계는 설정된 임계값을 따른다(M4). 팝업도 같은 색을 쓴다.
+    let (warn, danger) = SETTINGS.with(|c| {
+        let s = c.borrow();
+        (s.warn_percent, s.danger_percent)
+    });
+    match level_with(percent, warn, danger) {
         Level::Normal => COLORREF(0x00327D2E),
         Level::Warn => COLORREF(0x00007CF5),
         Level::Danger => COLORREF(0x002828C6),
@@ -478,12 +549,7 @@ unsafe fn show_menu(hwnd: HWND) {
     };
     let _ = AppendMenuW(menu, clean_flags, CMD_CLEAN, w!("지금 정리(&C)"));
     let _ = AppendMenuW(menu, MF_STRING, CMD_LIST, w!("목록 보기(&L)…"));
-    let _ = AppendMenuW(
-        menu,
-        MF_STRING | MF_GRAYED,
-        CMD_SETTINGS,
-        w!("설정(&S)… (M4)"),
-    );
+    let _ = AppendMenuW(menu, MF_STRING, CMD_SETTINGS, w!("설정(&S)…"));
     if !is_elevated() {
         let _ = AppendMenuW(
             menu,
@@ -514,6 +580,7 @@ unsafe fn show_menu(hwnd: HWND) {
         }
         CMD_CLEAN => spawn_clean(hwnd),
         CMD_LIST => open_list(),
+        CMD_SETTINGS => open_settings(),
         CMD_ELEVATE => restart_elevated(hwnd),
         _ => {}
     }

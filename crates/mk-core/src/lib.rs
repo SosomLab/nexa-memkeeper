@@ -1,6 +1,9 @@
 //! mk-core — 관찰·정리 엔진의 순수 로직.
 //! 수집(시스템 콜)은 mk-app(Win32)에서, 계산·표시·판정은 전부 여기서(단위 테스트 대상).
 
+pub mod settings;
+pub use settings::{Areas, Settings};
+
 /// 트레이 색 단계 임계(%) — 기본값. M4에서 settings로 이동한다(docs/05 §4-3).
 pub const WARN_PERCENT: u32 = 80;
 pub const DANGER_PERCENT: u32 = 90;
@@ -35,11 +38,31 @@ pub enum Level {
 }
 
 pub fn level(used_percent: u32) -> Level {
+    level_with(used_percent, WARN_PERCENT, DANGER_PERCENT)
+}
+
+/// 설정된 임계값 기준 색 단계(M4 — `settings.ini`의 warn/danger 반영).
+pub fn level_with(used_percent: u32, warn: u32, danger: u32) -> Level {
     match used_percent {
-        p if p >= DANGER_PERCENT => Level::Danger,
-        p if p >= WARN_PERCENT => Level::Warn,
+        p if p >= danger => Level::Danger,
+        p if p >= warn => Level::Warn,
         _ => Level::Normal,
     }
+}
+
+/// 자동 정리를 지금 실행해야 하는가(FR-4 트리거) — 임계값·쿨다운·주기를 한 곳에서 판정한다.
+/// `since_last_secs` = 마지막 정리 이후 경과(초). 정리 이력이 없으면 `u64::MAX`를 넘긴다.
+pub fn should_auto_clean(s: &Settings, used_percent: u32, since_last_secs: u64) -> bool {
+    if !s.auto_enabled {
+        return false;
+    }
+    if since_last_secs < s.cooldown_secs as u64 {
+        return false; // 쿨다운 중 — 임계값을 넘겨도 참는다(진동 방지)
+    }
+    if used_percent >= s.threshold_percent {
+        return true;
+    }
+    s.interval_mins > 0 && since_last_secs >= s.interval_mins as u64 * 60
 }
 
 /// 툴팁·알림용 용량 문자열 — MB 고정, 소수 1자리(docs/05 FR-1).
@@ -522,6 +545,32 @@ mod tests {
         assert_eq!(level(89), Level::Warn);
         assert_eq!(level(90), Level::Danger);
         assert_eq!(level(100), Level::Danger);
+    }
+
+    #[test]
+    fn auto_clean_respects_threshold_cooldown_and_interval() {
+        let mut s = Settings::default(); // 임계 90%, 쿨다운 300초, 주기 off
+                                         // 임계 미만 → 실행 안 함
+        assert!(!should_auto_clean(&s, 85, u64::MAX));
+        // 임계 이상 + 쿨다운 지남 → 실행
+        assert!(should_auto_clean(&s, 90, 301));
+        // 임계 이상이어도 쿨다운 중이면 참는다(진동 방지)
+        assert!(!should_auto_clean(&s, 99, 120));
+        // 자동 정리 off면 무조건 안 함
+        s.auto_enabled = false;
+        assert!(!should_auto_clean(&s, 99, u64::MAX));
+        // 주기 정리: 임계 미만이어도 경과 시간이 주기를 넘으면 실행
+        s.auto_enabled = true;
+        s.interval_mins = 30;
+        assert!(!should_auto_clean(&s, 10, 29 * 60));
+        assert!(should_auto_clean(&s, 10, 30 * 60));
+    }
+
+    #[test]
+    fn level_with_uses_configured_thresholds() {
+        assert_eq!(level_with(70, 60, 80), Level::Warn);
+        assert_eq!(level_with(80, 60, 80), Level::Danger);
+        assert_eq!(level_with(59, 60, 80), Level::Normal);
     }
 
     #[test]
