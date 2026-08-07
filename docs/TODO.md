@@ -27,8 +27,8 @@
 | M5-2 | 배포 2채널(DR-9) — 설치형 Inno(프로그램 목록·자동 실행 질문 기본 체크) + 포터블 ZIP · [20](20-packaging.md) | P0 | 대 | M4-2 | ✅ 08-07(설치본 생성은 Inno 설치 후 실검증) |
 | M5-4 | CI/CD — GitHub Actions(ci·release) + winget·choco 패키지 자산([20 §6·§7](20-packaging.md)) | P0 | 중 | M5-2 | ✅ 08-07(게시는 저장소 변수로 차단) |
 | M5-6 | Wiki 유지 — UI 변경 시 `scripts/capture-shots.ps1` 재실행 + 해당 페이지 갱신 | P2 | 소 | — | ♻️ 상시 |
-| M5-5 | 패키지 매니저 첫 등록 — winget PR 1회 · choco 계정·API 키·모더레이션 → 변수 `WINGET_PUBLISH`·`CHOCO_PUSH` on | P1 | 중 | M5-4 | ☐ **사용자 대기** |
-| M5-3 | 설치본 실검증 — [0.6.0 자산](https://github.com/SosomLab/nexa-memkeeper/releases/tag/0.6.0)으로 설치/제거 왕복 확인([20 §5](20-packaging.md)). 로컬 생성은 Inno 설치 시 |  P0 | 소 | M5-2 | ☐ **사용자 QA** |
+| M5-5 | 패키지 매니저 첫 등록 — **채널 2 × 패키지 2**(설치형·포터블): winget PR 2건 · choco 계정·API 키·모더레이션 → 변수 `WINGET_PUBLISH`·`CHOCO_PUSH` on([20 §7](20-packaging.md)) | P1 | 중 | M5-4 | ☐ **사용자 대기** |
+| M5-3 | 설치본 실검증 — [최신 릴리스 자산](https://github.com/SosomLab/nexa-memkeeper/releases/latest)으로 설치/제거 왕복 확인([20 §5](20-packaging.md)). 로컬 생성은 Inno 설치 시 |  P0 | 소 | M5-2 | ☐ **사용자 QA** |
 | E-1 | **알림 회수량에 `Active` 감소분 병기** — 현재 Available 차만 표기해 실제의 1/5에 못 미치게 설명(+679MB vs Active −3,870MB). 정직성 규칙([21 §2-1](21-effectiveness-measurement.md)) | P1 | 소 | — | ☐ |
 | E-2 | 설정 창 **주기 정리 항목에 비권장 근거 문구** — 회복 반감기 14초라 어떤 주기 설정보다 짧다([21 §8](21-effectiveness-measurement.md)) | P2 | 소 | E-1 | ☐ |
 | E-3 | 고압력 구간 재측정 — Available 수백 MB(실제 스래싱)에서도 같은 결론인지([21 §10](21-effectiveness-measurement.md) 한계 2) | P2 | 중 | — | ☐ |

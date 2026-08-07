@@ -21,6 +21,14 @@
 - **[0.6.2 릴리스](https://github.com/SosomLab/nexa-memkeeper/releases/tag/0.6.2)** — 자산 4종을 워크플로가 자동 첨부(0.6.1에서 설치본 ZIP이 목록 누락으로 빠졌던 것 수정).
 - **winget 2패키지 체계** — `SosomLab.NexaMemKeeper`(설치형·machine) / `SosomLab.NexaMemKeeper.Portable`(zip+portable·user, `nexamemkeeper` 별칭). choco와 동일 구도.
 - 게시는 계속 **꺼짐**(변수 미설정) — 켜면 두 패키지에 각각 PR이 만들어진다.
+- 릴리스 이력:
+
+  | 태그 | 무엇 | 자산 |
+  | --- | --- | --- |
+  | `0.6.0` | 첫 공개 릴리스(M5) | 4종(설치본 ZIP은 수동 업로드) |
+  | `0.6.1` | 포장 파이프라인 검증 | 3종 — **설치본 ZIP 첨부 누락**(워크플로 목록 빠짐) |
+  | **`0.6.2`** | 누락 정정 + winget 포터블 패키지 | **4종 전부 자동 첨부** |
+
 - 상세 → [journal/2026-08-07](journal/2026-08-07.md)
 
 ## 직전(2026-08-07 25차) — `0.6.1` 재배포
