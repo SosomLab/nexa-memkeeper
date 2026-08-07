@@ -4,6 +4,7 @@
 
 ## 2026-08-07
 
+- 20차: 진행사항 최신화 — README(M0~M4·설정 창 행·ms 표기)·STATUS(다음 단계)·BRANCHES 정정 후 병합·push. → [journal/2026-08-07](journal/2026-08-07.md)
 - 19차: 설정 창 라벨 줄바꿈 수정(사용자 QA) — 라벨/입력 규격 통일(218/232/96), GetTextExtentPoint32W로 필요 폭 실측 검증. → [journal/2026-08-07](journal/2026-08-07.md)
 - 18차: 설정 시간 단위를 전부 ms로 통일(poll_ms·cooldown_ms·interval_ms) + 구 키 1회 마이그레이션. 실기로 구 파일 → ms 재작성 확인. 테스트 38 green. → [journal/2026-08-07](journal/2026-08-07.md)
 - 17차: M4 설정 구현(`feat/m4-settings`) — settings.ini 파싱/검증·설정 창·자동 정리(임계값/쿨다운/주기)·영역 ③④⑤·앱 매니페스트. 설정 창 크기 QA 수정(AdjustWindowRect). 테스트 37 green. → [journal/2026-08-07](journal/2026-08-07.md)
