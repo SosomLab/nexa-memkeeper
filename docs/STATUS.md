@@ -2,7 +2,15 @@
 
 > 최신이 맨 위(시간 역순, 같은 날 여러 건이면 "N차"로 스택). 상세는 [journal/](journal/), 여기는 요약만.
 
-## 2026-08-07 23차 — `0.6.0` 릴리스
+## 2026-08-07 24차 — 배포 완료 · Wiki 공개
+
+- **[0.6.0 릴리스](https://github.com/SosomLab/nexa-memkeeper/releases/tag/0.6.0)** — 자산 4종(설치본 exe·설치본 ZIP·포터블 ZIP·SHA256SUMS).
+- **[Wiki](https://github.com/SosomLab/nexa-memkeeper/wiki) 7쪽 공개** — 기능·정리 영역·설정·설치·구조·문제 해결 + 스크린샷 4종.
+- 스크린샷은 [scripts/capture-shots.ps1](../scripts/capture-shots.ps1)로 재현 가능(UI 변경 시 재촬영).
+- 패키지 매니저 자동 게시는 여전히 **꺼짐**(변수 미설정) — 등록 절차는 [20 §7-4](20-packaging.md).
+- 상세 → [journal/2026-08-07](journal/2026-08-07.md)
+
+## 직전(2026-08-07 23차) — `0.6.0` 릴리스
 
 - **버전 `0.6.0` 승격** — 태그 push로 GitHub Actions가 설치본·포터블 ZIP·`SHA256SUMS.txt`를 Release에 첨부.
 - 게시 스위치 확인: 시크릿 2종 등록됨, **변수 `CHOCO_PUSH`·`WINGET_PUBLISH`는 미설정 → 자동 게시 없음**(지시대로).

@@ -33,6 +33,16 @@
 
 문서·git 규약과 라이선스 정책은 [`SosomLab/nexa-dir2`](https://github.com/SosomLab/nexa-dir2)의 검증 표준을 계승합니다.
 
+## 문서 · 스크린샷
+
+사용법과 화면별 설명은 **[Wiki](https://github.com/SosomLab/nexa-memkeeper/wiki)**에 있다 —
+[기능](https://github.com/SosomLab/nexa-memkeeper/wiki/Features) ·
+[정리 영역](https://github.com/SosomLab/nexa-memkeeper/wiki/Cleanup-Areas) ·
+[설정](https://github.com/SosomLab/nexa-memkeeper/wiki/Settings) ·
+[설치](https://github.com/SosomLab/nexa-memkeeper/wiki/Install).
+
+![메인 화면](docs/images/main-list.png)
+
 ## 배포
 
 | 채널 | 파일 | 비고 |
