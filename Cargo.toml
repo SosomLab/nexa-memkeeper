@@ -9,7 +9,7 @@ members = [
 
 [workspace.package]
 # 배포 버전과 일치. M0 완료 시 release 커밋으로 0.1.0 승격.
-version = "0.6.2"
+version = "0.7.0"
 edition = "2021"
 license = "LicenseRef-PolyForm-Noncommercial-1.0.0"
 authors = ["Sangyong Bae <kiros33@gmail.com>"]
