@@ -1,0 +1,34 @@
+# Nexa MemKeeper — 올 러스트 워크스페이스 (포터블 단일 exe, DR-5)
+# mk-core는 플랫폼 독립 순수 로직, mk-app의 Win32부는 #[cfg(windows)] 격리.
+[workspace]
+resolver = "2"
+members = [
+  "crates/mk-core",
+  "crates/mk-app",
+]
+
+[workspace.package]
+# 배포 버전과 일치. M0 완료 시 release 커밋으로 0.1.0 승격.
+version = "0.0.1"
+edition = "2021"
+license = "LicenseRef-PolyForm-Noncommercial-1.0.0"
+authors = ["Sangyong Bae <kiros33@gmail.com>"]
+repository = "https://github.com/SosomLab/nexa-memkeeper"
+homepage = "https://sosomlab.com"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "allow" # Win32 wndproc 전반 — 함수 단위 unsafe 유지(nexa-dir2 계승)
+[workspace.lints.clippy]
+redundant_clone = "warn"
+inefficient_to_string = "warn"
+
+[workspace.dependencies]
+mk-core = { path = "crates/mk-core" }
+
+# 릴리스 = 예산 게이트 DR-8(exe ≤3MB) + 성능 우선(DR-4) — nexa-dir2 검증 설정 계승(docs/18 §3)
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"

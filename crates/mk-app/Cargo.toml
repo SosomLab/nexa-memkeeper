@@ -1,0 +1,16 @@
+[package]
+name = "mk-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Nexa MemKeeper 앱 — 상주 셸·온디맨드 워커 겸용 단일 bin (--worker 분기, DR-7)"
+
+[dependencies]
+mk-core = { workspace = true }
+# windows/windows-core는 M0 트레이 슬라이스에서 도입(docs/10 §3 원장)
+
+[lints]
+workspace = true

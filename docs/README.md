@@ -9,10 +9,11 @@
 
 1. **왜 만드나** — [00 비전](00-vision.md) : 목적(사용자 확정)·설계 원칙·예산 목표
 2. **무엇을 만드나** — [05 요구사항](05-requirements.md) : FR/NFR·참조 프로그램 차용표·설정 스펙
-3. **핵심 결정** — [10 결정 기록](10-decision-record.md) : DR-1~3 + ADR 색인(📐 판단 대기 3건)
-4. **지금 상태** — [STATUS](STATUS.md) → [MILESTONES](MILESTONES.md)
-5. **진행 경과** — [DEVLOG](DEVLOG.md)(시간 역순) → 관심 날짜 [journal/](journal/)
-6. **규약** — [16 문서·커밋/푸시 규약](16-doc-git-conventions.md)
+3. **핵심 결정** — [10 결정 기록](10-decision-record.md) : DR-1~8 + ADR 색인
+4. **어떻게 짓나** — [02 로드맵](02-roadmap.md)(M0~M5) → ADR 06·07·08
+5. **지금 상태** — [STATUS](STATUS.md) → [MILESTONES](MILESTONES.md)
+6. **진행 경과** — [DEVLOG](DEVLOG.md)(시간 역순) → 관심 날짜 [journal/](journal/)
+7. **규약** — [16 문서·커밋/푸시 규약](16-doc-git-conventions.md) → [15 방법론](15-dev-methodology.md) → [18 빌드&테스트](18-build-and-test.md)
 
 ## ① 시발점 · 정체성
 
@@ -20,7 +21,7 @@
 |---|---|
 | [00 비전](00-vision.md) | ★ 목적(사용자 확정 08-07)·설계 원칙 5·예산 제안(RSS ≤5MB·exe ≤3MB) |
 | [05 요구사항](05-requirements.md) | ★ FR-1~6 / NFR-1~5 / 설정 스펙·추천 기본값 / 보호 프로세스 목록 |
-| [10 결정 기록](10-decision-record.md) | ★ DR-1(라이선스)·DR-2(규약)·DR-3(목적) + ADR 색인 |
+| [10 결정 기록](10-decision-record.md) | ★ DR-1~8(라이선스·규약·목적·우선순위·스택·기법·구조·예산) + ADR 색인·crate 원장 |
 | [CLAUDE.md](../CLAUDE.md) | 이식용 프로젝트 메모리 |
 
 ## ② 주요 목표 · 설계
@@ -28,10 +29,11 @@
 | 문서 | 내용 |
 |---|---|
 | [MILESTONES](MILESTONES.md) | ★ 기능·목표 현황(✅/🚧/📐/☐) |
-| [06 ADR-0001 스택](06-adr-0001-stack.md) | 📐 언어·UI 후보 5안 비교 — 권고 Rust+windows-rs(**판단 대기**) |
-| [07 ADR-0002 회수 기법](07-adr-0002-memory-reclaim.md) | 📐 관찰·열거·회수 시스템 콜 매핑 + 권한 전략(**판단 대기**) |
-| [08 ADR-0003 상주 구조](08-adr-0003-resident-architecture.md) | 📐 단일 프로세스+자기 트림 vs 셸/워커 분리(**판단 대기**) |
-| 01 아키텍처 · 02 로드맵 | ☐ 추후 작성 — ADR 승인 후([TODO](TODO.md) P-5·P-6) |
+| [02 로드맵](02-roadmap.md) | ★ M0~M5 계획 원안(완료 기준·예산 게이트) |
+| [06 ADR-0001 스택](06-adr-0001-stack.md) | ✅ 언어·UI = Rust+windows-rs(후보 5안 비교 → DR-5) |
+| [07 ADR-0002 회수 기법](07-adr-0002-memory-reclaim.md) | ✅ 관찰·열거·회수 시스템 콜 매핑 + 권한 전략(→ DR-6) |
+| [08 ADR-0003 상주 구조](08-adr-0003-resident-architecture.md) | ✅ 하이브리드 — 셸+온디맨드 워커(DR-4 기준 정정 → DR-7) |
+| 01 아키텍처 | ☐ 추후 작성 — M0~M1 구현으로 실체 확정 후 기록 |
 
 ## ③ 진행 경과 · 할 일
 
@@ -47,7 +49,8 @@
 | 문서 | 내용 |
 |---|---|
 | [16 문서·커밋/푸시 규약](16-doc-git-conventions.md) | ★ 문서 4층 체계·커밋/브랜치/푸시 규칙 — **타 프로젝트 이식용 지시문 포함** |
-| 15 개발 방법론 · 18 빌드&테스트 | ☐ 추후 작성 — 기술 기반 확정 후([TODO](TODO.md) P-5) |
+| [15 개발 방법론](15-dev-methodology.md) | 수직 슬라이스·commit scope 규약·크레이트 구조·안전 규율 |
+| [18 빌드 & 테스트](18-build-and-test.md) | ★ 빌드·테스트·예산 실측 절차(SSOT) |
 
 ---
 
