@@ -53,6 +53,8 @@ pub struct Settings {
     pub danger_percent: u32,
     pub notify: bool,
     pub hotkey_clean: String,
+    /// UI 언어 — `en`(**기본**) / `ko` / `auto`(OS 언어 따름). 적용은 mk-app config.rs.
+    pub lang: String,
     // [auto]
     pub auto_enabled: bool,
     pub threshold_percent: u32,
@@ -78,6 +80,7 @@ impl Default for Settings {
             danger_percent: 90,
             notify: true,
             hotkey_clean: String::new(),
+            lang: "en".to_string(),
             auto_enabled: true,
             threshold_percent: 90,
             cooldown_ms: 300_000,
@@ -159,6 +162,7 @@ impl Settings {
             }
             ("general", "notify") => self.notify = parse_bool(value).unwrap_or(self.notify),
             ("general", "hotkey_clean") => self.hotkey_clean = value.to_string(),
+            ("general", "lang") => self.lang = value.to_string(),
             ("auto", "enabled") => {
                 self.auto_enabled = parse_bool(value).unwrap_or(self.auto_enabled)
             }

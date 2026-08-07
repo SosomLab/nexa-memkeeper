@@ -2,6 +2,24 @@
 //! `--worker <작업>` 인자로 온디맨드 워커로 분기(M1), 무인자 = 상주 셸.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+/// UI 문자열(i18n) — **영어 원문을 그대로 쓰고** 현재 언어로 번역해 UTF-16 널 종료 버퍼를 만든다.
+///
+/// ⚠️ **호출 인자 자리에서만** 쓸 것. 임시 `Vec`은 그 문장(statement)이 끝날 때 해제되므로
+/// `let s = tw!("...");` 처럼 붙잡아 두면 댕글링이 된다(호출 안에서 쓰면 안전).
+#[cfg(windows)]
+#[macro_export]
+macro_rules! tw {
+    ($s:literal) => {
+        windows::core::PCWSTR(
+            mk_core::tr($s)
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect::<Vec<u16>>()
+                .as_ptr(),
+        )
+    };
+}
+
 #[cfg(windows)]
 mod config;
 #[cfg(windows)]

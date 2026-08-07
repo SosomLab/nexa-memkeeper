@@ -385,7 +385,9 @@ unsafe fn paint(hwnd: HWND, st: &PopupState) {
     text(
         mem,
         &format!(
-            "메모리 {pct}% 사용 · {} / {}",
+            "{} {pct}% {} · {} / {}",
+            mk_core::tr("Memory"),
+            mk_core::tr("used"),
             mk_core::fmt_size(st.snap.used()),
             mk_core::fmt_size(st.snap.total)
         ),
@@ -479,7 +481,7 @@ unsafe fn paint(hwnd: HWND, st: &PopupState) {
     }
 
     // 버튼 2개 — 설정은 트레이 우클릭 메뉴 전용(사용자 확정 08-07)
-    let labels = ["지금 정리", "목록 보기…"];
+    let labels = [mk_core::tr("Clean Now"), mk_core::tr("Show List…")];
     for (i, label) in labels.iter().enumerate() {
         let i = i as i32;
         let bx = PAD + i * (BTN_W + 6);
@@ -514,8 +516,8 @@ unsafe fn item_menu(hwnd: HWND, owner: HWND, pid: u32, name: &str) {
         return; // 보호 프로세스 — 메뉴 자체를 열지 않는다(15 §4)
     }
     let Ok(menu) = CreatePopupMenu() else { return };
-    let _ = AppendMenuW(menu, MF_STRING, CMD_TRIM, w!("이 프로세스 메모리 회수(&T)"));
-    let _ = AppendMenuW(menu, MF_STRING, CMD_KILL, w!("프로세스 종료(&K)…"));
+    let _ = AppendMenuW(menu, MF_STRING, CMD_TRIM, tw!("Trim Memory(&T)"));
+    let _ = AppendMenuW(menu, MF_STRING, CMD_KILL, tw!("End Process(&K)…"));
     let mut pt = POINT::default();
     let _ = GetCursorPos(&mut pt);
     let _ = SetForegroundWindow(hwnd);
@@ -541,7 +543,7 @@ unsafe fn item_menu(hwnd: HWND, owner: HWND, pid: u32, name: &str) {
             let r = MessageBoxW(
                 Some(hwnd),
                 PCWSTR(msg.as_ptr()),
-                w!("프로세스 종료 확인"),
+                tw!("End Process — Confirm"),
                 MB_YESNO | MB_ICONWARNING,
             );
             if r == IDYES {

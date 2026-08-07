@@ -5,17 +5,19 @@
 
 use std::collections::HashSet;
 
-use mk_core::{ProcInfo, Row, RowKind, SortKey};
+use mk_core::{tr, ProcInfo, Row, RowKind, SortKey};
 use windows::core::{w, PCWSTR, PWSTR};
+use windows::Win32::Foundation::SIZE;
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateFontW, CreateSolidBrush,
-    DeleteDC, DeleteObject, DrawTextW, EndPaint, FillRect, GetSysColor, InvalidateRect,
-    SelectObject, SetBkMode, SetTextColor, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, COLOR_BTNFACE,
-    COLOR_GRAYTEXT, COLOR_HIGHLIGHT, COLOR_HIGHLIGHTTEXT, COLOR_WINDOW, COLOR_WINDOWTEXT,
-    DEFAULT_CHARSET, DEFAULT_PITCH, DRAW_TEXT_FORMAT, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX,
-    DT_RIGHT, DT_SINGLELINE, DT_VCENTER, HBRUSH, HDC, HFONT, OUT_DEFAULT_PRECIS, PAINTSTRUCT,
-    SRCCOPY, SYS_COLOR_INDEX, TRANSPARENT,
+    DeleteDC, DeleteObject, DrawTextW, EndPaint, FillRect, GetDC, GetSysColor,
+    GetTextExtentPoint32W, InvalidateRect, ReleaseDC, SelectObject, SetBkMode, SetTextColor,
+    CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, COLOR_BTNFACE, COLOR_GRAYTEXT, COLOR_HIGHLIGHT,
+    COLOR_HIGHLIGHTTEXT, COLOR_WINDOW, COLOR_WINDOWTEXT, DEFAULT_CHARSET, DEFAULT_PITCH,
+    DRAW_TEXT_FORMAT, DT_CENTER, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_RIGHT, DT_SINGLELINE,
+    DT_VCENTER, HBRUSH, HDC, HFONT, OUT_DEFAULT_PRECIS, PAINTSTRUCT, SRCCOPY, SYS_COLOR_INDEX,
+    TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Registry::{
@@ -82,11 +84,11 @@ const RUN_VALUE: PCWSTR = w!("NexaMemKeeper");
 
 /// 열 정의 — (제목, 정렬 기준, 오른쪽 정렬, 고정 폭). 이름 열은 남는 폭을 흡수(폭 0).
 const COLS: &[(&str, SortKey, bool, i32)] = &[
-    ("프로세스", SortKey::Name, false, 0),
+    ("Process", SortKey::Name, false, 0),
     ("PID", SortKey::Pid, true, 70),
-    ("프라이빗", SortKey::PrivateWs, true, 95),
-    ("워킹셋", SortKey::Ws, true, 95),
-    ("쓰레드", SortKey::Threads, true, 65),
+    ("Private", SortKey::PrivateWs, true, 95),
+    ("Working Set", SortKey::Ws, true, 95),
+    ("Threads", SortKey::Threads, true, 65),
 ];
 
 struct ListState {
@@ -153,7 +155,7 @@ pub fn run() -> u32 {
         let Ok(hwnd) = CreateWindowExW(
             WINDOW_EX_STYLE(0),
             CLASS,
-            w!("Nexa MemKeeper — 프로세스 목록"),
+            tw!("Nexa MemKeeper — Processes"),
             WS_OVERLAPPEDWINDOW | WS_VSCROLL | WS_VISIBLE,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
@@ -182,92 +184,102 @@ unsafe fn build_menu(hwnd: HWND) -> HMENU {
     let bar = CreateMenu().unwrap_or_default();
 
     let file = CreatePopupMenu().unwrap_or_default();
-    let _ = AppendMenuW(file, MF_STRING, ID_REFRESH, w!("새로 고침(&R)\tF5"));
+    let _ = AppendMenuW(file, MF_STRING, ID_REFRESH, tw!("Refresh(&R)\tF5"));
     let _ = AppendMenuW(file, MF_SEPARATOR, 0, None);
-    let _ = AppendMenuW(file, MF_STRING, ID_CLOSE, w!("닫기(&X)"));
-    let _ = AppendMenuW(bar, MF_POPUP, file.0 as usize, w!("파일(&F)"));
+    let _ = AppendMenuW(file, MF_STRING, ID_CLOSE, tw!("Close(&X)"));
+    let _ = AppendMenuW(bar, MF_POPUP, file.0 as usize, tw!("File(&F)"));
 
     let mem = CreatePopupMenu().unwrap_or_default();
-    let _ = AppendMenuW(mem, MF_STRING, ID_CLEAN_ALL, w!("지금 정리(&C) — 전체"));
+    let _ = AppendMenuW(mem, MF_STRING, ID_CLEAN_ALL, tw!("Clean Now(&C) — All"));
     let _ = AppendMenuW(mem, MF_SEPARATOR, 0, None);
     let _ = AppendMenuW(
         mem,
         MF_STRING,
         ID_TRIM_SEL,
-        w!("선택 프로세스 메모리 회수(&T)"),
+        tw!("Trim Selected Process(&T)"),
     );
-    let _ = AppendMenuW(mem, MF_STRING, ID_KILL_SEL, w!("선택 프로세스 종료(&K)…"));
+    let _ = AppendMenuW(
+        mem,
+        MF_STRING,
+        ID_KILL_SEL,
+        tw!("End Selected Process(&K)…"),
+    );
     let _ = AppendMenuW(
         mem,
         MF_STRING,
         ID_KILL_TREE_SEL,
-        w!("선택 프로세스 트리 종료(&R)…"),
+        tw!("End Selected Process Tree(&R)…"),
     );
     let _ = AppendMenuW(
         mem,
         MF_STRING,
         ID_KILL_THREAD_SEL,
-        w!("선택 쓰레드 종료(&E)…"),
+        tw!("End Selected Thread(&E)…"),
     );
-    let _ = AppendMenuW(bar, MF_POPUP, mem.0 as usize, w!("메모리(&M)"));
+    let _ = AppendMenuW(bar, MF_POPUP, mem.0 as usize, tw!("Memory(&M)"));
 
     let view = CreatePopupMenu().unwrap_or_default();
     let _ = AppendMenuW(
         view,
         MF_STRING,
         ID_VIEW_FLAT,
-        w!("평면 목록(&L) — 전체 나열"),
+        tw!("Flat List(&L) — show all"),
     );
-    let _ = AppendMenuW(view, MF_STRING, ID_VIEW_TREE, w!("프로세스 트리(&T)"));
+    let _ = AppendMenuW(view, MF_STRING, ID_VIEW_TREE, tw!("Process Tree(&T)"));
     let _ = AppendMenuW(view, MF_SEPARATOR, 0, None);
-    let _ = AppendMenuW(view, MF_STRING, ID_EXPAND_ALL, w!("모두 펼치기(&E)"));
-    let _ = AppendMenuW(view, MF_STRING, ID_COLLAPSE_ALL, w!("모두 접기(&C)"));
+    let _ = AppendMenuW(view, MF_STRING, ID_EXPAND_ALL, tw!("Expand All(&E)"));
+    let _ = AppendMenuW(view, MF_STRING, ID_COLLAPSE_ALL, tw!("Collapse All(&C)"));
     let _ = AppendMenuW(view, MF_SEPARATOR, 0, None);
     let _ = AppendMenuW(
         view,
         MF_STRING,
         ID_CLEAR_FILTER,
-        w!("검색 지우기(&D)\tEsc — 창에 그냥 입력하면 검색"),
+        tw!("Clear Search(&D)\tEsc — just type to search"),
     );
-    let _ = AppendMenuW(bar, MF_POPUP, view.0 as usize, w!("보기(&V)"));
+    let _ = AppendMenuW(bar, MF_POPUP, view.0 as usize, tw!("View(&V)"));
 
     let interval = CreatePopupMenu().unwrap_or_default();
-    let _ = AppendMenuW(interval, MF_STRING, ID_REFRESH_1S, w!("1초"));
-    let _ = AppendMenuW(interval, MF_STRING, ID_REFRESH_2S, w!("2초 (기본)"));
-    let _ = AppendMenuW(interval, MF_STRING, ID_REFRESH_5S, w!("5초"));
+    let _ = AppendMenuW(interval, MF_STRING, ID_REFRESH_1S, tw!("1 sec"));
+    let _ = AppendMenuW(interval, MF_STRING, ID_REFRESH_2S, tw!("2 sec (default)"));
+    let _ = AppendMenuW(interval, MF_STRING, ID_REFRESH_5S, tw!("5 sec"));
 
     let cfg = CreatePopupMenu().unwrap_or_default();
     let _ = AppendMenuW(
         cfg,
         MF_STRING,
         ID_AUTORUN,
-        w!("Windows 시작 시 자동 실행(&A)"),
+        tw!("Run at Windows startup(&A)"),
     );
-    let _ = AppendMenuW(cfg, MF_POPUP, interval.0 as usize, w!("목록 갱신 주기(&I)"));
+    let _ = AppendMenuW(
+        cfg,
+        MF_POPUP,
+        interval.0 as usize,
+        tw!("List refresh interval(&I)"),
+    );
     let _ = AppendMenuW(
         cfg,
         MF_STRING,
         ID_HIDE_PSEUDO,
-        w!("의사 프로세스 숨기기(&H) — Memory Compression 등"),
+        tw!("Hide pseudo processes(&H)"),
     );
     let _ = AppendMenuW(cfg, MF_SEPARATOR, 0, None);
     let _ = AppendMenuW(
         cfg,
         MF_STRING | MF_GRAYED,
         ID_PREFS,
-        w!("환경 설정(&P)… (M4 예정)"),
+        tw!("Preferences(&P)…"),
     );
-    let _ = AppendMenuW(bar, MF_POPUP, cfg.0 as usize, w!("설정(&S)"));
+    let _ = AppendMenuW(bar, MF_POPUP, cfg.0 as usize, tw!("Settings(&S)"));
 
     let help = CreatePopupMenu().unwrap_or_default();
-    let _ = AppendMenuW(help, MF_STRING, ID_URL_HOME, w!("SosomLab 홈페이지(&W)"));
-    let _ = AppendMenuW(help, MF_STRING, ID_URL_REPO, w!("GitHub 저장소(&G)"));
+    let _ = AppendMenuW(help, MF_STRING, ID_URL_HOME, tw!("SosomLab Website(&W)"));
+    let _ = AppendMenuW(help, MF_STRING, ID_URL_REPO, tw!("GitHub Repository(&G)"));
     if !URL_APP.is_empty() {
-        let _ = AppendMenuW(help, MF_STRING, ID_URL_APP, w!("앱 홈페이지(&P)"));
+        let _ = AppendMenuW(help, MF_STRING, ID_URL_APP, tw!("App Website(&P)"));
     }
     let _ = AppendMenuW(help, MF_SEPARATOR, 0, None);
-    let _ = AppendMenuW(help, MF_STRING, ID_ABOUT, w!("정보(&A)"));
-    let _ = AppendMenuW(bar, MF_POPUP, help.0 as usize, w!("도움말(&H)"));
+    let _ = AppendMenuW(help, MF_STRING, ID_ABOUT, tw!("About(&A)"));
+    let _ = AppendMenuW(bar, MF_POPUP, help.0 as usize, tw!("Help(&H)"));
 
     let _ = SetMenu(hwnd, Some(bar));
     bar
@@ -325,8 +337,10 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
         WM_CREATE => {
             let mut client = RECT::default();
             let _ = GetClientRect(hwnd, &mut client);
+            // 설정 로드가 UI 언어도 정한다 — **메뉴를 만들기 전에** 불러야 메뉴 문구가 같은 언어가 된다
+            // (08-07 QA: 메뉴만 영어, 본문은 한국어로 섞여 나왔다)
+            let cfg = crate::config::load();
             let menu = build_menu(hwnd);
-            let cfg = crate::config::load(); // M4 — 저장된 보기 설정 반영
             STATE.with(|s| {
                 *s.borrow_mut() = Some(ListState {
                     procs: Vec::new(),
@@ -422,8 +436,10 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
             let (x, y) = (lo_i16(lp), hi_i16(lp));
             if y < HEAD_H {
                 // 헤더 클릭 = 정렬(같은 열 재클릭 시 방향 반전)
+                let width = with_state_ret(|st| st.client.right).unwrap_or(0);
+                let hit_key = col_at(hwnd, width, x);
                 with_state(|st| {
-                    if let Some(key) = col_at(st.client.right, x) {
+                    if let Some(key) = hit_key {
                         if st.sort_key == key {
                             st.sort_asc = !st.sort_asc;
                         } else {
@@ -514,7 +530,11 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
         ID_TRIM_SEL | ID_KILL_SEL | ID_KILL_TREE_SEL | ID_KILL_THREAD_SEL => {
             let sel = with_state_ret(|st| st.selected().cloned()).flatten();
             let Some(row) = sel else {
-                info_box(hwnd, "선택 없음", "목록에서 항목을 먼저 선택하세요.");
+                info_box(
+                    hwnd,
+                    tr("No selection"),
+                    tr("Select an item from the list first."),
+                );
                 return;
             };
             run_row_action(hwnd, &row, id);
@@ -523,7 +543,7 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
             let now = autorun_enabled();
             let ok = set_autorun(!now);
             if !ok {
-                info_box(hwnd, "자동 실행", "설정을 변경하지 못했습니다.");
+                info_box(hwnd, tr("Autorun"), tr("Could not change the setting."));
             }
             with_state(|st| sync_menu_checks(st.menu, st.refresh_ms, st.hide_pseudo));
         }
@@ -581,22 +601,23 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
         ID_URL_APP => open_url(hwnd, URL_APP),
         ID_ABOUT => {
             let mut body = format!(
-                "트레이 상주 초경량 메모리 최적화 도구\n\
-                 버전 {}\n\n\
-                 홈페이지: {URL_HOME}\n\
-                 저장소: {URL_REPO}\n",
-                env!("CARGO_PKG_VERSION")
+                "{}\n{} {}\n\n{}: {URL_HOME}\n{}: {URL_REPO}\n",
+                tr("Ultra-light tray-resident memory optimizer"),
+                tr("Version"),
+                env!("CARGO_PKG_VERSION"),
+                tr("Website"),
+                tr("Repository")
             );
             if !URL_APP.is_empty() {
-                body.push_str(&format!("앱 홈페이지: {URL_APP}\n"));
+                body.push_str(&format!("{}: {URL_APP}\n", tr("App Website(&P)")));
             }
-            body.push_str(
-                "\nSosomLab · Sangyong Bae\n\
-                 라이선스: PolyForm Noncommercial 1.0.0\n\
-                 (개인·비상업 무료 / 상업 사용은 별도 라이선스)\n\n\
-                 ※ 도움말 메뉴에서 홈페이지·저장소를 바로 열 수 있습니다.",
-            );
-            info_box(hwnd, "Nexa MemKeeper 정보", &body);
+            body.push_str(&format!(
+                "\nSosomLab · Sangyong Bae\n{}: PolyForm Noncommercial 1.0.0\n{}\n\n{}",
+                tr("License"),
+                tr("Free for personal/noncommercial use; commercial use requires a separate license."),
+                tr("Open the website or repository from the Help menu.")
+            ));
+            info_box(hwnd, tr("About Nexa MemKeeper"), &body);
         }
         _ => {}
     }
@@ -623,8 +644,8 @@ unsafe fn act(hwnd: HWND, ok: bool) {
     if !ok {
         info_box(
             hwnd,
-            "처리 실패",
-            "관리자 권한이 필요하거나 보호 대상일 수 있습니다.",
+            tr("Action failed"),
+            tr("Administrator rights may be required, or the target is protected."),
         );
     }
     reload();
@@ -648,8 +669,8 @@ unsafe fn open_url(hwnd: HWND, url: &str) {
     if r.0 as isize <= 32 {
         info_box(
             hwnd,
-            "링크 열기 실패",
-            &format!("브라우저를 열지 못했습니다.\n{url}"),
+            tr("Failed to open link"),
+            &format!("{}\n{url}", tr("Could not open the browser.")),
         );
     }
 }
@@ -744,26 +765,93 @@ fn expander_x(depth: i32) -> i32 {
 }
 
 /// x좌표 → 헤더 열의 정렬 기준.
-fn col_at(width: i32, x: i32) -> Option<SortKey> {
-    col_bounds(width)
+unsafe fn col_at(hwnd: HWND, width: i32, x: i32) -> Option<SortKey> {
+    col_bounds_for(hwnd, width)
         .iter()
         .enumerate()
         .find(|(_, (x0, x1))| x >= *x0 && x < *x1)
         .map(|(i, _)| COLS[i].1)
 }
 
-/// 열 x 경계 — 이름 열이 남는 폭을 흡수.
-fn col_bounds(width: i32) -> Vec<(i32, i32)> {
-    let fixed: i32 = COLS.iter().skip(1).map(|c| c.3).sum();
-    let name_w = (width - fixed - 16).max(120);
+/// 정렬 화살표(▲▼)가 차지하는 폭 — 제목과 겹치지 않게 항상 따로 확보한다.
+const ARROW_W: i32 = 16;
+/// 셀 좌우 안쪽 여백.
+const CELL_PAD: i32 = 8;
+
+/// 헤더 글자 폭 실측 — 고정 열이 제목보다 좁아 잘리는 것을 막는다(08-07 QA: 헤더 글자 깨짐).
+/// DC가 없을 때(히트 테스트 등)는 `None`을 넘기면 선언된 기본 폭을 쓴다.
+unsafe fn measure(dc: Option<(HDC, HFONT)>, s: &str) -> i32 {
+    let Some((dc, font)) = dc else {
+        return 0;
+    };
+    let buf: Vec<u16> = s.encode_utf16().collect();
+    let old = SelectObject(dc, font.into());
+    let mut sz = SIZE::default();
+    let ok = GetTextExtentPoint32W(dc, &buf, &mut sz).as_bool();
+    SelectObject(dc, old);
+    if ok {
+        sz.cx
+    } else {
+        0
+    }
+}
+
+/// 열 x 경계. 규칙(08-07 QA — 헤더 글자 깨짐·마지막 열 잘림):
+/// ① 고정 열 최소 폭 = 제목 실측 폭 + 여백(+ **정렬 중인 열만** 화살표 자리)
+/// ② 이름 열이 남는 폭을 흡수하되 최소 90px
+/// ③ 그래도 창을 넘치면 고정 열을 최소 폭까지 **비례 축소**해 마지막 열이 잘리지 않게 한다
+unsafe fn col_bounds_dc(dc: Option<(HDC, HFONT)>, width: i32, skey: SortKey) -> Vec<(i32, i32)> {
+    let mins: Vec<i32> = COLS
+        .iter()
+        .map(|c| {
+            let arrow = if c.1 == skey { ARROW_W } else { 0 };
+            measure(dc, mk_core::tr(c.0)) + arrow + CELL_PAD * 2
+        })
+        .collect();
+    let mut widths: Vec<i32> = COLS
+        .iter()
+        .enumerate()
+        .map(|(i, c)| if i == 0 { 0 } else { c.3.max(mins[i]) })
+        .collect();
+
+    let avail = (width - CELL_PAD * 2).max(120);
+    let fixed: i32 = widths.iter().skip(1).sum();
+    widths[0] = (avail - fixed).max(90);
+
+    // 총 폭이 넘치면 고정 열부터 최소 폭까지 줄인다(이름 열은 이미 최소)
+    let mut over: i32 = widths.iter().sum::<i32>() - avail;
+    if over > 0 {
+        for i in (1..widths.len()).rev() {
+            let slack = widths[i] - mins[i];
+            if slack <= 0 {
+                continue;
+            }
+            let cut = slack.min(over);
+            widths[i] -= cut;
+            over -= cut;
+            if over <= 0 {
+                break;
+            }
+        }
+    }
+
     let mut out = Vec::with_capacity(COLS.len());
-    let mut x = 8;
-    for (i, c) in COLS.iter().enumerate() {
-        let w = if i == 0 { name_w } else { c.3 };
+    let mut x = CELL_PAD;
+    for w in widths {
         out.push((x, x + w));
         x += w;
     }
     out
+}
+
+/// 히트 테스트용 — 창 DC로 같은 폭을 재현한다(그리기와 어긋나면 클릭 위치가 밀린다).
+unsafe fn col_bounds_for(hwnd: HWND, width: i32) -> Vec<(i32, i32)> {
+    let (font, skey) = with_state_ret(|st| (st.font_head, st.sort_key))
+        .unwrap_or((HFONT::default(), SortKey::PrivateWs));
+    let dc = GetDC(Some(hwnd));
+    let bounds = col_bounds_dc(Some((dc, font)), width, skey);
+    ReleaseDC(Some(hwnd), dc);
+    bounds
 }
 
 unsafe fn track_pos(hwnd: HWND) -> i32 {
@@ -873,7 +961,10 @@ unsafe fn paint(hwnd: HWND) {
         },
         bg,
     );
-    let cols = col_bounds(w);
+    let head_font = with_state_ret(|st| st.font_head).unwrap();
+    let (skey, sasc) =
+        with_state_ret(|st| (st.sort_key, st.sort_asc)).unwrap_or((SortKey::PrivateWs, false));
+    let cols = col_bounds_dc(Some((mem, head_font)), w, skey);
 
     // ── 헤더(정렬 표시 포함)
     fill(
@@ -886,26 +977,36 @@ unsafe fn paint(hwnd: HWND) {
         },
         face,
     );
-    let (skey, sasc) =
-        with_state_ret(|st| (st.sort_key, st.sort_asc)).unwrap_or((SortKey::PrivateWs, false));
-    let old_font = SelectObject(mem, with_state_ret(|st| st.font_head).unwrap().into());
+    let old_font = SelectObject(mem, head_font.into());
     for (i, (title, key, right, _)) in COLS.iter().enumerate() {
         let (x0, x1) = cols[i];
-        let label = if *key == skey {
-            format!("{title} {}", if sasc { "▲" } else { "▼" })
-        } else {
-            title.to_string()
-        };
+        // 화살표는 셀 오른쪽 끝에 **따로** 그린다 — 제목과 한 문자열로 합치면 좁은 열에서
+        // 서로 밀려 잘린다(08-07 QA: 헤더 글자 깨짐).
+        if *key == skey {
+            text(
+                mem,
+                if sasc { "▲" } else { "▼" },
+                RECT {
+                    left: x1 - ARROW_W,
+                    top: 0,
+                    right: x1,
+                    bottom: HEAD_H,
+                },
+                DT_CENTER | DT_VCENTER,
+                fg,
+            );
+        }
+        // 제목은 화살표 자리를 뺀 영역에. 그래도 넘치면 말줄임(옆 열을 침범하지 않는다).
         text(
             mem,
-            &label,
+            mk_core::tr(title),
             RECT {
                 left: x0,
                 top: 0,
-                right: x1,
+                right: x1 - ARROW_W,
                 bottom: HEAD_H,
             },
-            if *right { DT_RIGHT } else { DT_LEFT } | DT_VCENTER,
+            (if *right { DT_RIGHT } else { DT_LEFT }) | DT_VCENTER | DT_END_ELLIPSIS,
             fg,
         );
         if i > 0 {
@@ -1009,7 +1110,7 @@ unsafe fn paint(hwnd: HWND) {
                     mk_core::fmt_size(p.ws)
                 },
                 if is_thread {
-                    format!("{}회 전환", p.threads)
+                    format!("{} {}", p.threads, tr("switches"))
                 } else {
                     p.threads.to_string()
                 },
@@ -1058,28 +1159,47 @@ unsafe fn paint(hwnd: HWND) {
             .selected()
             .map(|r| {
                 if r.kind == RowKind::Thread {
-                    format!(" · 선택: 쓰레드 {} (PID {})", r.tid, r.pid)
+                    format!(
+                        " · {}: {} {} (PID {})",
+                        tr("Selected"),
+                        tr("Thread"),
+                        r.tid,
+                        r.pid
+                    )
                 } else {
-                    format!(" · 선택: {} ({})", r.label, r.pid)
+                    format!(" · {}: {} ({})", tr("Selected"), r.label, r.pid)
                 }
             })
             .unwrap_or_default();
         let mode = if !st.filter.is_empty() {
             format!(
-                "🔍 검색 \"{}\" — {}개 일치(Esc 지움)",
+                "🔍 {} \"{}\" — {} {}",
+                tr("Search"),
                 st.filter,
-                st.procs.len()
+                st.procs.len(),
+                tr("matches (Esc to clear)")
             )
         } else if st.flat {
-            format!("프로세스 {}개 · 평면 목록", st.procs.len())
+            format!(
+                "{} {} · {}",
+                st.procs.len(),
+                tr("processes"),
+                tr("flat list")
+            )
         } else {
-            format!("프로세스 {}개 · 트리 보기", st.procs.len())
+            format!(
+                "{} {} · {}",
+                st.procs.len(),
+                tr("processes"),
+                tr("tree view")
+            )
         };
         text(
             mem,
             &format!(
-                "{mode} · {}초 갱신 · 입력=검색 · 헤더=정렬 · 우클릭=회수/종료{sel_txt}",
-                st.refresh_ms / 1000
+                "{mode} · {} {}{sel_txt}",
+                st.refresh_ms / 1000,
+                tr("sec refresh · type=search · header=sort · right-click=trim/end")
             ),
             RECT {
                 left: 8,
@@ -1104,7 +1224,7 @@ unsafe fn paint(hwnd: HWND) {
 unsafe fn item_menu(hwnd: HWND, row: &Row) {
     let Ok(menu) = CreatePopupMenu() else { return };
     if row.kind == RowKind::Thread {
-        let _ = AppendMenuW(menu, MF_STRING, ID_KILL_THREAD_SEL, w!("쓰레드 종료(&E)…"));
+        let _ = AppendMenuW(menu, MF_STRING, ID_KILL_THREAD_SEL, tw!("End Thread(&E)…"));
     } else {
         let protected = mk_core::is_protected(&row.label);
         let flags = if protected {
@@ -1112,17 +1232,17 @@ unsafe fn item_menu(hwnd: HWND, row: &Row) {
         } else {
             MF_STRING
         };
-        let _ = AppendMenuW(menu, flags, ID_TRIM_SEL, w!("메모리 회수(&T)"));
+        let _ = AppendMenuW(menu, flags, ID_TRIM_SEL, tw!("Trim Memory(&T)"));
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
-        let _ = AppendMenuW(menu, flags, ID_KILL_SEL, w!("프로세스 종료(&K)…"));
-        let _ = AppendMenuW(menu, flags, ID_KILL_TREE_SEL, w!("프로세스 트리 종료(&R)…"));
+        let _ = AppendMenuW(menu, flags, ID_KILL_SEL, tw!("End Process(&K)…"));
+        let _ = AppendMenuW(menu, flags, ID_KILL_TREE_SEL, tw!("End Process Tree(&R)…"));
         if protected {
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
             let _ = AppendMenuW(
                 menu,
                 MF_STRING | MF_GRAYED,
                 0,
-                w!("보호 대상 — 조작할 수 없음"),
+                tw!("Protected — cannot be modified"),
             );
         }
     }
@@ -1153,10 +1273,12 @@ unsafe fn run_row_action(hwnd: HWND, row: &Row, id: usize) {
         ID_KILL_SEL if row.kind == RowKind::Process => {
             if confirm(
                 hwnd,
-                "프로세스 종료 확인",
+                tr("End Process — Confirm"),
                 &format!(
-                    "{} (PID {})을(를) 종료할까요?\n저장하지 않은 작업이 손실될 수 있습니다.",
-                    row.label, row.pid
+                    "{} (PID {})?\n{}",
+                    row.label,
+                    row.pid,
+                    tr("Unsaved work may be lost.")
                 ),
             ) {
                 act(hwnd, crate::worker::run_kill(row.pid) == 0);
@@ -1167,10 +1289,13 @@ unsafe fn run_row_action(hwnd: HWND, row: &Row, id: usize) {
                 with_state_ret(|st| mk_core::descendants(&st.procs, row.pid).len()).unwrap_or(0);
             if confirm(
                 hwnd,
-                "프로세스 트리 종료 확인",
+                tr("End Process Tree — Confirm"),
                 &format!(
-                    "{} (PID {})와(과) 하위 프로세스 {}개를 모두 종료할까요?\n저장하지 않은 작업이 손실될 수 있습니다.",
-                    row.label, row.pid, n
+                    "{} (PID {}) + {} child process(es)?\n{}",
+                    row.label,
+                    row.pid,
+                    n,
+                    tr("Unsaved work may be lost.")
                 ),
             ) {
                 act(hwnd, crate::worker::run_kill_tree(row.pid) == 0);
@@ -1179,20 +1304,22 @@ unsafe fn run_row_action(hwnd: HWND, row: &Row, id: usize) {
         ID_KILL_THREAD_SEL if row.kind == RowKind::Thread => {
             if confirm(
                 hwnd,
-                "쓰레드 종료 확인",
+                tr("End Thread — Confirm"),
                 &format!(
-                    "쓰레드 {}(PID {})을(를) 강제 종료할까요?\n\
-                     ⚠️ 쓰레드 강제 종료는 해당 프로그램의 상태를 깨뜨릴 수 있습니다.",
-                    row.tid, row.pid
+                    "{} {} (PID {})?\n⚠️ {}",
+                    tr("Thread"),
+                    row.tid,
+                    row.pid,
+                    tr("Force-ending a thread can corrupt the program's state.")
                 ),
             ) {
                 act(hwnd, crate::worker::run_kill_thread(row.tid) == 0);
             }
         }
         ID_TRIM_SEL | ID_KILL_SEL | ID_KILL_TREE_SEL => {
-            info_box(hwnd, "대상 아님", "프로세스 행을 선택하세요.")
+            info_box(hwnd, tr("Wrong target"), tr("Select a process row."))
         }
-        ID_KILL_THREAD_SEL => info_box(hwnd, "대상 아님", "쓰레드 행을 선택하세요."),
+        ID_KILL_THREAD_SEL => info_box(hwnd, tr("Wrong target"), tr("Select a thread row.")),
         _ => {}
     }
 }

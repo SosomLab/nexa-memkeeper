@@ -4,7 +4,7 @@
 > 구 키(`poll_secs`·`cooldown_secs`·`interval_mins`)는 읽을 때 자동 환산되고 저장 시 새 키로 대체된다(1회 마이그레이션).
 >
 > **구현 상태(08-07, M4)**: 파싱·검증(mk-core `settings.rs`)·파일 I/O(mk-app `config.rs`)·설정 창 완료.
-> 미구현: `hotkey_clean`(전역 핫키 등록), `[watch]`(X-1 후보), `[exclude]`, `[auto] low_memory_event`,
+> 미구현: `[watch]`(X-1 후보), `[exclude]`, `[auto] low_memory_event`,
 > `[areas] combine`(⑥ — M5). UI에 없는 키도 파일에 쓰면 보존되며, 구현 시 그대로 살아난다.
 
 > [05 §4](05-requirements.md) 설정 스펙의 구현 상세: 키 이름·형·기본값·범위·UI 배치·적용 시점.
@@ -21,8 +21,8 @@
 | `warn_percent` | u32 | `80` | 50~95, danger 미만 | 〃 |
 | `danger_percent` | u32 | `90` | warn 초과~99 | 〃 |
 | `notify` | bool | `true` | 정리 완료 토스트(회수량 MB) | 트레이 토글 + 설정 창 |
-| `hotkey_clean` | str | `""`(off) | 예 `Ctrl+Alt+M` — RegisterHotKey 형식 | 설정 창·일반 |
-| `lang` | enum | `auto` | `auto` \| `ko` \| `en` (후보 X-7) | 〃 |
+| `hotkey_clean` | str | `""`(off) | 예 `Ctrl+Alt+M` — 수정자 필수. 설정 창에서 **조합을 직접 눌러** 지정(M4-2 구현) | 설정 창·일반 |
+| `lang` | enum | **`en`** | `en`(기본) \| `ko` \| `auto`(OS 언어) — 설정 창 콤보. 변경은 재시작 후 적용(DR-13) | 〃 |
 | `start_delay_secs` | u32 | `0` | 0~120 — 자동 시작 시 부팅 경쟁 회피(후보 X-5, 설치형 기본 30 권장) | 〃 |
 
 ## 2. `[auto]` — 자동 정리 (FR-4 트리거)

@@ -4,6 +4,7 @@
 
 ## 2026-08-07
 
+- 21차: M4-2 전역 핫키(등록·해제·설정 UI) · 그리드 헤더 렌더 수정(폭 실측·화살표 분리·비례 축소) · **다국어 처리(기본 영어, DR-13)**. 테스트 49 green. → [journal/2026-08-07](journal/2026-08-07.md)
 - 20차: 진행사항 최신화 — README(M0~M4·설정 창 행·ms 표기)·STATUS(다음 단계)·BRANCHES 정정 후 병합·push. → [journal/2026-08-07](journal/2026-08-07.md)
 - 19차: 설정 창 라벨 줄바꿈 수정(사용자 QA) — 라벨/입력 규격 통일(218/232/96), GetTextExtentPoint32W로 필요 폭 실측 검증. → [journal/2026-08-07](journal/2026-08-07.md)
 - 18차: 설정 시간 단위를 전부 ms로 통일(poll_ms·cooldown_ms·interval_ms) + 구 키 1회 마이그레이션. 실기로 구 파일 → ms 재작성 확인. 테스트 38 green. → [journal/2026-08-07](journal/2026-08-07.md)
