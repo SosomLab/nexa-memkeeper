@@ -2,7 +2,15 @@
 
 > 최신이 맨 위(시간 역순, 같은 날 여러 건이면 "N차"로 스택). 상세는 [journal/](journal/), 여기는 요약만.
 
-## 2026-08-08 10차 — winget 등록 시도(토큰 스코프에서 막힘)
+## 2026-08-08 11차 — winget PR 2건 제출 완료
+
+- **[#413829](https://github.com/microsoft/winget-pkgs/pull/413829)(설치형) · [#413830](https://github.com/microsoft/winget-pkgs/pull/413830)(포터블)** — 매니페스트 검증 통과 후 PR 생성.
+- 막혔던 원인은 공용 포크 동기화 권한(`workflow` 스코프) — 토큰 갱신으로 해소(같은 계정을 쓰는 nexa-dir2도 함께 풀림).
+- **두 채널 모두 심사 대기**: Chocolatey 2패키지(9차) · winget 2패키지(11차).
+- 다음 버전부터는 릴리스 워크플로가 winget 갱신 PR을 자동으로 연다.
+- 상세 → [journal/2026-08-08](journal/2026-08-08.md)
+
+## 직전(2026-08-08 10차) — winget 등록 시도(토큰 스코프에서 막힘)
 
 - 첫 등록용 `winget submit` 워크플로 추가 — **매니페스트 검증은 통과**했다(설치형·포터블 2건).
 - 🔴 **PR 생성 실패**: `WINGET_TOKEN`에 **`workflow` 스코프**가 없어 `winget-pkgs` 포크를 upstream과 동기화하지 못한다.
