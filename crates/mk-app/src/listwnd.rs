@@ -23,6 +23,7 @@ use windows::Win32::System::Registry::{
     HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_SZ,
 };
 use windows::Win32::UI::Controls::SetScrollInfo;
+use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CheckMenuItem, CreateMenu, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
     DestroyMenu, DestroyWindow, DispatchMessageW, GetClientRect, GetCursorPos, GetMessageW,
@@ -58,6 +59,16 @@ const ID_REFRESH_1S: usize = 230;
 const ID_REFRESH_2S: usize = 231;
 const ID_REFRESH_5S: usize = 232;
 const ID_ABOUT: usize = 240;
+const ID_URL_HOME: usize = 241;
+const ID_URL_REPO: usize = 242;
+const ID_URL_APP: usize = 243;
+
+// ---- 외부 링크(도움말 메뉴·정보 창) ----
+const URL_HOME: &str = "https://sosomlab.com";
+const URL_REPO: &str = "https://github.com/SosomLab/nexa-memkeeper";
+/// 앱 전용 홈페이지 — **주소가 정해지면 이 한 줄만 채우면** 도움말 메뉴와 정보 창에 자동 노출된다.
+/// 비어 있으면 메뉴 항목도 만들지 않는다(사용자 예고 08-07: "앱 홈페이지 신설하면 알려줄 예정").
+const URL_APP: &str = "";
 
 /// Windows 시작 시 실행 등록 위치(사용자 단위 — 관리자 권한 불필요).
 const RUN_KEY: PCWSTR = w!(r"Software\Microsoft\Windows\CurrentVersion\Run");
@@ -89,6 +100,8 @@ struct ListState {
     refresh_ms: u32,
     font: HFONT,
     font_head: HFONT,
+    /// 트리 디스클로저 전용 — Segoe MDL2 Assets(본문 폰트엔 PUA 글리프가 없어 tofu가 된다).
+    font_glyph: HFONT,
     client: RECT,
     menu: HMENU,
 }
@@ -213,6 +226,12 @@ unsafe fn build_menu(hwnd: HWND) -> HMENU {
     let _ = AppendMenuW(bar, MF_POPUP, cfg.0 as usize, w!("설정(&S)"));
 
     let help = CreatePopupMenu().unwrap_or_default();
+    let _ = AppendMenuW(help, MF_STRING, ID_URL_HOME, w!("SosomLab 홈페이지(&W)"));
+    let _ = AppendMenuW(help, MF_STRING, ID_URL_REPO, w!("GitHub 저장소(&G)"));
+    if !URL_APP.is_empty() {
+        let _ = AppendMenuW(help, MF_STRING, ID_URL_APP, w!("앱 홈페이지(&P)"));
+    }
+    let _ = AppendMenuW(help, MF_SEPARATOR, 0, None);
     let _ = AppendMenuW(help, MF_STRING, ID_ABOUT, w!("정보(&A)"));
     let _ = AppendMenuW(bar, MF_POPUP, help.0 as usize, w!("도움말(&H)"));
 
@@ -275,6 +294,7 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                     refresh_ms: crate::popup::REFRESH_MS,
                     font: make_font(-12, 400),
                     font_head: make_font(-12, 600),
+                    font_glyph: make_font_face(GLYPH_SIZE, 400, w!("Segoe MDL2 Assets")),
                     client,
                     menu,
                 })
@@ -399,6 +419,7 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                 if let Some(st) = s.borrow_mut().take() {
                     let _ = DeleteObject(st.font.into());
                     let _ = DeleteObject(st.font_head.into());
+                    let _ = DeleteObject(st.font_glyph.into());
                     let _ = DestroyMenu(st.menu);
                 }
             });
@@ -464,11 +485,28 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
             });
             SetTimer(Some(hwnd), TIMER_REFRESH, ms, None);
         }
-        ID_ABOUT => info_box(
-            hwnd,
-            "Nexa MemKeeper",
-            "트레이 상주 초경량 메모리 최적화 도구\nSosomLab · PolyForm Noncommercial 1.0.0",
-        ),
+        ID_URL_HOME => open_url(hwnd, URL_HOME),
+        ID_URL_REPO => open_url(hwnd, URL_REPO),
+        ID_URL_APP => open_url(hwnd, URL_APP),
+        ID_ABOUT => {
+            let mut body = format!(
+                "트레이 상주 초경량 메모리 최적화 도구\n\
+                 버전 {}\n\n\
+                 홈페이지: {URL_HOME}\n\
+                 저장소: {URL_REPO}\n",
+                env!("CARGO_PKG_VERSION")
+            );
+            if !URL_APP.is_empty() {
+                body.push_str(&format!("앱 홈페이지: {URL_APP}\n"));
+            }
+            body.push_str(
+                "\nSosomLab · Sangyong Bae\n\
+                 라이선스: PolyForm Noncommercial 1.0.0\n\
+                 (개인·비상업 무료 / 상업 사용은 별도 라이선스)\n\n\
+                 ※ 도움말 메뉴에서 홈페이지·저장소를 바로 열 수 있습니다.",
+            );
+            info_box(hwnd, "Nexa MemKeeper 정보", &body);
+        }
         _ => {}
     }
 }
@@ -483,6 +521,29 @@ unsafe fn act(hwnd: HWND, ok: bool) {
     }
     reload();
     let _ = InvalidateRect(Some(hwnd), None, false);
+}
+
+/// 기본 브라우저로 URL 열기(도움말 메뉴). 실패해도 조용히 넘기지 않고 알린다.
+unsafe fn open_url(hwnd: HWND, url: &str) {
+    if url.is_empty() {
+        return;
+    }
+    let wide: Vec<u16> = url.encode_utf16().chain(std::iter::once(0)).collect();
+    let r = ShellExecuteW(
+        Some(hwnd),
+        w!("open"),
+        PCWSTR(wide.as_ptr()),
+        None,
+        None,
+        SW_SHOWNORMAL,
+    );
+    if r.0 as isize <= 32 {
+        info_box(
+            hwnd,
+            "링크 열기 실패",
+            &format!("브라우저를 열지 못했습니다.\n{url}"),
+        );
+    }
 }
 
 unsafe fn info_box(hwnd: HWND, title: &str, body: &str) {
@@ -556,6 +617,13 @@ fn row_at(st: &ListState, y: i32) -> Option<&Row> {
 const INDENT: i32 = 16;
 const EXP_W: i32 = 14;
 
+// 트리 디스클로저 셰브론 — `nexa-dir2` 규약 계승(crates/nexa-app/src/ctl/ordertree.rs:848,
+// prefs.rs:1557 — MDL2 ChevronRight/ChevronDown을 9 DIP 소형으로).
+const GLYPH_COLLAPSED: &str = "\u{E76C}"; // ChevronRight
+const GLYPH_EXPANDED: &str = "\u{E70D}"; // ChevronDown
+/// 원본 디스클로저 FontSize 9 규약(dw.rs:167).
+const GLYPH_SIZE: i32 = -9;
+
 /// 깊이별 확장 버튼 x 시작 좌표.
 fn expander_x(depth: i32) -> i32 {
     8 + depth * INDENT
@@ -610,6 +678,10 @@ unsafe fn sync_scrollbar(hwnd: HWND) {
 }
 
 unsafe fn make_font(height: i32, weight: i32) -> HFONT {
+    make_font_face(height, weight, w!("Segoe UI"))
+}
+
+unsafe fn make_font_face(height: i32, weight: i32, face: PCWSTR) -> HFONT {
     CreateFontW(
         height,
         0,
@@ -624,7 +696,7 @@ unsafe fn make_font(height: i32, weight: i32) -> HFONT {
         CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY,
         DEFAULT_PITCH.0 as u32,
-        w!("Segoe UI"),
+        face,
     )
 }
 
@@ -780,9 +852,15 @@ unsafe fn paint(hwnd: HWND) {
             // 트리 들여쓰기 + 확장 버튼([+]/[-])
             let ex = expander_x(p.depth);
             if p.expandable {
+                // 셰브론은 MDL2 전용 폰트로 — 본문 폰트로 그리면 tofu(nexa-dir2 dw.rs:811 교훈)
+                SelectObject(mem, st.font_glyph.into());
                 text(
                     mem,
-                    if p.expanded { "▾" } else { "▸" },
+                    if p.expanded {
+                        GLYPH_EXPANDED
+                    } else {
+                        GLYPH_COLLAPSED
+                    },
                     RECT {
                         left: ex,
                         top,
@@ -792,6 +870,7 @@ unsafe fn paint(hwnd: HWND) {
                     DT_LEFT | DT_VCENTER,
                     if selected { hi_text } else { fg },
                 );
+                SelectObject(mem, st.font.into()); // 본문 폰트 복귀
             }
             let name_x = ex + EXP_W + 2;
             let cells = [
