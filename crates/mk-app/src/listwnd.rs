@@ -23,19 +23,20 @@ use windows::Win32::System::Registry::{
     HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_SZ,
 };
 use windows::Win32::UI::Controls::SetScrollInfo;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_F5;
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CheckMenuItem, CreateMenu, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
     DestroyMenu, DestroyWindow, DispatchMessageW, GetClientRect, GetCursorPos, GetMessageW,
-    GetScrollInfo, KillTimer, LoadCursorW, MessageBoxW, PostQuitMessage, RegisterClassW,
+    GetScrollInfo, KillTimer, LoadCursorW, LoadIconW, MessageBoxW, PostQuitMessage, RegisterClassW,
     SetForegroundWindow, SetMenu, SetTimer, ShowWindow, TrackPopupMenu, TranslateMessage,
     CW_USEDEFAULT, HMENU, IDC_ARROW, IDYES, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_YESNO,
     MF_BYCOMMAND, MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING, MF_UNCHECKED, MSG,
     SB_BOTTOM, SB_LINEDOWN, SB_LINEUP, SB_PAGEDOWN, SB_PAGEUP, SB_THUMBPOSITION, SB_THUMBTRACK,
     SB_TOP, SB_VERT, SCROLLINFO, SCROLLINFO_MASK, SIF_PAGE, SIF_POS, SIF_RANGE, SIF_TRACKPOS,
-    SW_SHOWNORMAL, TPM_RETURNCMD, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WM_COMMAND, WM_CREATE,
-    WM_DESTROY, WM_LBUTTONDOWN, WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONUP, WM_SIZE, WM_TIMER,
-    WM_VSCROLL, WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_VISIBLE, WS_VSCROLL,
+    SW_SHOWNORMAL, TPM_RETURNCMD, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WM_CHAR, WM_COMMAND, WM_CREATE,
+    WM_DESTROY, WM_KEYDOWN, WM_LBUTTONDOWN, WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONUP, WM_SIZE,
+    WM_TIMER, WM_VSCROLL, WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_VISIBLE, WS_VSCROLL,
 };
 
 const CLASS: PCWSTR = w!("NexaMemKeeperList");
@@ -59,6 +60,11 @@ const ID_REFRESH_1S: usize = 230;
 const ID_REFRESH_2S: usize = 231;
 const ID_REFRESH_5S: usize = 232;
 const ID_ABOUT: usize = 240;
+const ID_VIEW_FLAT: usize = 250;
+const ID_VIEW_TREE: usize = 251;
+const ID_EXPAND_ALL: usize = 252;
+const ID_COLLAPSE_ALL: usize = 253;
+const ID_CLEAR_FILTER: usize = 254;
 const ID_URL_HOME: usize = 241;
 const ID_URL_REPO: usize = 242;
 const ID_URL_APP: usize = 243;
@@ -97,6 +103,10 @@ struct ListState {
     sort_asc: bool,
     /// 의사 프로세스(Memory Compression 등) 숨김 — 기본 on(사용자 확정 08-07).
     hide_pseudo: bool,
+    /// 평면 목록(계층 없음) — **기본값**. 트리는 부모가 접히면 자식을 못 찾는다(08-07 사용자 사례).
+    flat: bool,
+    /// 이름 검색어 — 창에 그냥 타이핑하면 채워진다(Esc = 지움). 비어 있지 않으면 항상 평면 표시.
+    filter: String,
     refresh_ms: u32,
     font: HFONT,
     font_head: HFONT,
@@ -133,6 +143,10 @@ pub fn run() -> u32 {
             lpfnWndProc: Some(wnd_proc),
             hInstance: hinst.into(),
             hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
+            // exe에 임베드한 앱 아이콘(리소스 ID 1 — build.rs) → 제목 표시줄·작업 표시줄·Alt+Tab.
+            // MAKEINTRESOURCE = 포인터가 아니라 **정수 리소스 ID**를 포인터 자리에 넣는 Win32 관용구.
+            hIcon: LoadIconW(Some(hinst.into()), PCWSTR(std::ptr::without_provenance(1)))
+                .unwrap_or_default(),
             ..Default::default()
         };
         RegisterClassW(&wc);
@@ -197,6 +211,26 @@ unsafe fn build_menu(hwnd: HWND) -> HMENU {
     );
     let _ = AppendMenuW(bar, MF_POPUP, mem.0 as usize, w!("메모리(&M)"));
 
+    let view = CreatePopupMenu().unwrap_or_default();
+    let _ = AppendMenuW(
+        view,
+        MF_STRING,
+        ID_VIEW_FLAT,
+        w!("평면 목록(&L) — 전체 나열"),
+    );
+    let _ = AppendMenuW(view, MF_STRING, ID_VIEW_TREE, w!("프로세스 트리(&T)"));
+    let _ = AppendMenuW(view, MF_SEPARATOR, 0, None);
+    let _ = AppendMenuW(view, MF_STRING, ID_EXPAND_ALL, w!("모두 펼치기(&E)"));
+    let _ = AppendMenuW(view, MF_STRING, ID_COLLAPSE_ALL, w!("모두 접기(&C)"));
+    let _ = AppendMenuW(view, MF_SEPARATOR, 0, None);
+    let _ = AppendMenuW(
+        view,
+        MF_STRING,
+        ID_CLEAR_FILTER,
+        w!("검색 지우기(&D)\tEsc — 창에 그냥 입력하면 검색"),
+    );
+    let _ = AppendMenuW(bar, MF_POPUP, view.0 as usize, w!("보기(&V)"));
+
     let interval = CreatePopupMenu().unwrap_or_default();
     let _ = AppendMenuW(interval, MF_STRING, ID_REFRESH_1S, w!("1초"));
     let _ = AppendMenuW(interval, MF_STRING, ID_REFRESH_2S, w!("2초 (기본)"));
@@ -239,8 +273,19 @@ unsafe fn build_menu(hwnd: HWND) -> HMENU {
     bar
 }
 
-/// 메뉴 체크 상태 동기화(자동 실행·의사 프로세스 숨김·갱신 주기).
+/// 메뉴 체크 상태 동기화(자동 실행·의사 프로세스 숨김·보기 모드·갱신 주기).
 unsafe fn sync_menu_checks(menu: HMENU, refresh_ms: u32, hide_pseudo: bool) {
+    let flat = with_state_ret(|st| st.flat).unwrap_or(true);
+    CheckMenuItem(
+        menu,
+        ID_VIEW_FLAT as u32,
+        MF_BYCOMMAND.0 | if flat { MF_CHECKED.0 } else { MF_UNCHECKED.0 },
+    );
+    CheckMenuItem(
+        menu,
+        ID_VIEW_TREE as u32,
+        MF_BYCOMMAND.0 | if flat { MF_UNCHECKED.0 } else { MF_CHECKED.0 },
+    );
     let on = autorun_enabled();
     CheckMenuItem(
         menu,
@@ -291,6 +336,8 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                     sort_key: SortKey::PrivateWs,
                     sort_asc: false, // 점유 큰 순 = 기본
                     hide_pseudo: true,
+                    flat: true,
+                    filter: String::new(),
                     refresh_ms: crate::popup::REFRESH_MS,
                     font: make_font(-12, 400),
                     font_head: make_font(-12, 600),
@@ -318,6 +365,21 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
             reload();
             sync_scrollbar(hwnd);
             let _ = InvalidateRect(Some(hwnd), None, false);
+            LRESULT(0)
+        }
+        // 창에 그냥 타이핑 = 이름 검색(별도 입력 상자 없이 — 커스텀 드로잉 창의 관용구)
+        WM_CHAR => {
+            let ch = char::from_u32(wp.0 as u32).unwrap_or('\0');
+            match ch {
+                '\u{8}' => set_filter(hwnd, Some(None)), // Backspace = 한 글자 지움
+                '\u{1B}' => set_filter(hwnd, None),      // Esc = 전체 지움
+                c if !c.is_control() => set_filter(hwnd, Some(Some(c))),
+                _ => {}
+            }
+            LRESULT(0)
+        }
+        WM_KEYDOWN if wp.0 as u32 == VK_F5.0 as u32 => {
+            on_command(hwnd, ID_REFRESH);
             LRESULT(0)
         }
         WM_COMMAND => {
@@ -464,6 +526,34 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
             }
             with_state(|st| sync_menu_checks(st.menu, st.refresh_ms, st.hide_pseudo));
         }
+        ID_VIEW_FLAT | ID_VIEW_TREE => {
+            with_state(|st| {
+                st.flat = id == ID_VIEW_FLAT;
+                rebuild(st);
+                sync_menu_checks(st.menu, st.refresh_ms, st.hide_pseudo);
+            });
+            sync_scrollbar(hwnd);
+            let _ = InvalidateRect(Some(hwnd), None, false);
+        }
+        ID_EXPAND_ALL | ID_COLLAPSE_ALL => {
+            with_state(|st| {
+                st.expanded.clear();
+                if id == ID_EXPAND_ALL {
+                    // 트리 보기: 자식 있는 프로세스만 펼친다(전부 펼치면 쓰레드 수천 줄이 된다)
+                    let has_child: HashSet<u32> = st.procs.iter().map(|p| p.ppid).collect();
+                    for p in &st.procs {
+                        if has_child.contains(&p.pid) {
+                            st.expanded.insert(p.pid);
+                        }
+                    }
+                }
+                st.top = 0;
+                rebuild(st);
+            });
+            sync_scrollbar(hwnd);
+            let _ = InvalidateRect(Some(hwnd), None, false);
+        }
+        ID_CLEAR_FILTER => set_filter(hwnd, None),
         ID_HIDE_PSEUDO => {
             with_state(|st| {
                 st.hide_pseudo = !st.hide_pseudo;
@@ -509,6 +599,23 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
         }
         _ => {}
     }
+}
+
+/// 검색어 갱신 — `None` = 전체 지움, `Some(None)` = 한 글자 지움, `Some(Some(c))` = 한 글자 추가.
+unsafe fn set_filter(hwnd: HWND, edit: Option<Option<char>>) {
+    with_state(|st| {
+        match edit {
+            None => st.filter.clear(),
+            Some(None) => {
+                st.filter.pop();
+            }
+            Some(Some(c)) => st.filter.push(c),
+        }
+        st.top = 0;
+    });
+    reload();
+    sync_scrollbar(hwnd);
+    let _ = InvalidateRect(Some(hwnd), None, false);
 }
 
 unsafe fn act(hwnd: HWND, ok: bool) {
@@ -580,18 +687,24 @@ fn with_state_ret<T>(f: impl FnOnce(&mut ListState) -> T) -> Option<T> {
     STATE.with(|s| s.borrow_mut().as_mut().map(f))
 }
 
-/// 목록 재수집 + 트리 재구성(정렬·펼침·스크롤·선택 유지).
+/// 목록 재수집 + 재구성(정렬·펼침·검색·스크롤·선택 유지).
 fn reload() {
     let all = crate::procs::enumerate();
     with_state(|st| {
-        st.procs = mk_core::filter_pseudo(all, st.hide_pseudo);
+        let visible = mk_core::filter_pseudo(all, st.hide_pseudo);
+        st.procs = mk_core::filter_by_name(visible, &st.filter);
         rebuild(st);
     });
 }
 
-/// 수집본은 그대로 두고 화면 행만 다시 만든다(정렬·펼침 변경 시).
+/// 수집본은 그대로 두고 화면 행만 다시 만든다(정렬·펼침·보기 모드 변경 시).
+/// 검색 중에는 결과가 부모 아래 숨지 않도록 **항상 평면**으로 그린다.
 fn rebuild(st: &mut ListState) {
-    st.rows = mk_core::build_rows(&st.procs, st.sort_key, st.sort_asc, &st.expanded);
+    st.rows = if st.flat || !st.filter.is_empty() {
+        mk_core::build_rows_flat(&st.procs, st.sort_key, st.sort_asc, &st.expanded)
+    } else {
+        mk_core::build_rows(&st.procs, st.sort_key, st.sort_asc, &st.expanded)
+    };
     st.top = st.top.min(st.max_top());
 }
 
@@ -950,14 +1063,29 @@ unsafe fn paint(hwnd: HWND) {
                 }
             })
             .unwrap_or_default();
+        let mode = if !st.filter.is_empty() {
+            format!(
+                "🔍 검색 \"{}\" — {}개 일치(Esc 지움)",
+                st.filter,
+                st.procs.len()
+            )
+        } else if st.flat {
+            format!("프로세스 {}개 · 평면 목록", st.procs.len())
+        } else {
+            format!("프로세스 {}개 · 트리 보기", st.procs.len())
+        };
         text(
             mem,
             &format!(
-                "프로세스 {}개 · {}초 갱신 · ▸ 클릭=쓰레드/자식 펼치기 · 헤더=정렬 · 우클릭=회수/종료{sel_txt}",
-                st.procs.len(),
+                "{mode} · {}초 갱신 · 입력=검색 · 헤더=정렬 · 우클릭=회수/종료{sel_txt}",
                 st.refresh_ms / 1000
             ),
-            RECT { left: 8, top: sy, right: w - 8, bottom: h },
+            RECT {
+                left: 8,
+                top: sy,
+                right: w - 8,
+                bottom: h,
+            },
             DT_LEFT | DT_VCENTER | DT_END_ELLIPSIS,
             fg,
         );

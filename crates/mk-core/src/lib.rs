@@ -235,6 +235,79 @@ pub fn build_rows(
     out
 }
 
+/// **평면 목록** — 계층 없이 모든 프로세스를 한 단계로 나열(작업 관리자 "자세히"와 같은 형태).
+/// 트리에서는 부모가 접혀 있으면 자식이 보이지 않아 특정 프로그램을 찾기 어렵다(08-07 사용자 사례:
+/// `NexaMarkdownViewer.exe`가 `explorer.exe` 아래 접혀 있었다) → 기본 보기는 이쪽.
+/// 확장 버튼은 **쓰레드 전개**로만 쓰인다.
+pub fn build_rows_flat(
+    procs: &[ProcInfo],
+    key: SortKey,
+    asc: bool,
+    expanded: &std::collections::HashSet<u32>,
+) -> Vec<Row> {
+    let mut idx: Vec<usize> = (0..procs.len()).collect();
+    idx.sort_by(|a, b| {
+        let (x, y) = (&procs[*a], &procs[*b]);
+        let ord = match key {
+            SortKey::Name => x
+                .name
+                .to_ascii_lowercase()
+                .cmp(&y.name.to_ascii_lowercase()),
+            SortKey::Pid => x.pid.cmp(&y.pid),
+            SortKey::PrivateWs => x.private_ws.cmp(&y.private_ws),
+            SortKey::Ws => x.ws.cmp(&y.ws),
+            SortKey::Threads => x.threads.cmp(&y.threads),
+        };
+        if asc { ord } else { ord.reverse() }.then(x.pid.cmp(&y.pid))
+    });
+    let mut out = Vec::with_capacity(procs.len());
+    for i in idx {
+        let p = &procs[i];
+        let is_expanded = expanded.contains(&p.pid);
+        out.push(Row {
+            kind: RowKind::Process,
+            depth: 0,
+            pid: p.pid,
+            tid: 0,
+            label: p.name.clone(),
+            private_ws: p.private_ws,
+            ws: p.ws,
+            threads: p.threads,
+            expandable: !p.thread_list.is_empty(),
+            expanded: is_expanded,
+        });
+        if is_expanded {
+            for t in &p.thread_list {
+                out.push(Row {
+                    kind: RowKind::Thread,
+                    depth: 1,
+                    pid: p.pid,
+                    tid: t.tid,
+                    label: format!("쓰레드 {} · {}", t.tid, thread_state_name(t.state)),
+                    private_ws: 0,
+                    ws: 0,
+                    threads: t.context_switches,
+                    expandable: false,
+                    expanded: false,
+                });
+            }
+        }
+    }
+    out
+}
+
+/// 이름 부분 일치 필터(대소문자 무시). 빈 질의는 전체 반환.
+pub fn filter_by_name(procs: Vec<ProcInfo>, query: &str) -> Vec<ProcInfo> {
+    let q = query.trim().to_ascii_lowercase();
+    if q.is_empty() {
+        return procs;
+    }
+    procs
+        .into_iter()
+        .filter(|p| p.name.to_ascii_lowercase().contains(&q))
+        .collect()
+}
+
 /// `pid`의 모든 하위 프로세스 PID(자기 자신 제외) — 트리 종료용. 순환에 안전.
 pub fn descendants(procs: &[ProcInfo], pid: u32) -> Vec<u32> {
     use std::collections::HashSet;
@@ -576,6 +649,61 @@ mod tests {
         let procs = vec![child(1, 2, "a.exe", 1), child(2, 1, "b.exe", 1)];
         let rows = build_rows(&procs, SortKey::PrivateWs, false, &HashSet::from([1, 2]));
         assert!(rows.len() <= 4);
+    }
+
+    #[test]
+    fn flat_rows_show_every_process_regardless_of_parent() {
+        // 08-07 사용자 사례 재현: 자식이 접힌 부모 아래 숨지 않아야 한다
+        let procs = vec![
+            p(100, "explorer.exe", 500),
+            child(200, 100, "NexaMarkdownViewer.exe", 300),
+            child(300, 200, "child.exe", 100),
+        ];
+        let rows = build_rows_flat(&procs, SortKey::PrivateWs, false, &HashSet::new());
+        assert_eq!(
+            rows.iter().map(|r| (r.pid, r.depth)).collect::<Vec<_>>(),
+            vec![(100, 0), (200, 0), (300, 0)]
+        );
+        // 트리 보기에서는 접힌 부모 아래라 최상위 1개만 보인다(대비 확인)
+        assert_eq!(
+            build_rows(&procs, SortKey::PrivateWs, false, &HashSet::new()).len(),
+            1
+        );
+    }
+
+    #[test]
+    fn flat_rows_expand_threads_only() {
+        let mut a = p(10, "a.exe", 100);
+        a.thread_list = vec![ThreadInfo {
+            tid: 11,
+            state: 2,
+            context_switches: 1,
+        }];
+        let procs = vec![a, child(20, 10, "b.exe", 50)];
+        let rows = build_rows_flat(&procs, SortKey::PrivateWs, false, &HashSet::from([10]));
+        assert_eq!(
+            rows.iter()
+                .map(|r| (r.kind, r.pid, r.tid))
+                .collect::<Vec<_>>(),
+            vec![
+                (RowKind::Process, 10, 0),
+                (RowKind::Thread, 10, 11),
+                (RowKind::Process, 20, 0), // 자식도 같은 단계로 나열
+            ]
+        );
+    }
+
+    #[test]
+    fn filter_by_name_is_case_insensitive_substring() {
+        let procs = vec![
+            p(1, "NexaMarkdownViewer.exe", 10),
+            p(2, "explorer.exe", 20),
+            p(3, "Code.exe", 30),
+        ];
+        assert_eq!(filter_by_name(procs.clone(), "markdown").len(), 1);
+        assert_eq!(filter_by_name(procs.clone(), "EXE").len(), 3);
+        assert_eq!(filter_by_name(procs.clone(), "  ").len(), 3); // 공백만 = 전체
+        assert!(filter_by_name(procs, "zzz").is_empty());
     }
 
     #[test]

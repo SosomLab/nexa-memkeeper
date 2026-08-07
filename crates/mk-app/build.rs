@@ -30,12 +30,28 @@ fn main() {
         quad.get(2).copied().unwrap_or("0"),
     );
 
+    // 앱 아이콘(assets/nexa-memkeeper.ico — scripts/make-icon.ps1이 생성). rc는 역슬래시를
+    // 이스케이프해야 하므로 슬래시로 통일한다. 파일이 없으면 아이콘 줄을 빼고 버전 정보만 넣는다.
+    let icon_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("assets")
+        .join("nexa-memkeeper.ico");
+    println!("cargo:rerun-if-changed={}", icon_path.display());
+    let icon_line = if icon_path.is_file() {
+        format!(
+            "1 ICON \"{}\"\n",
+            icon_path.display().to_string().replace('\\', "/")
+        )
+    } else {
+        println!("cargo:warning=앱 아이콘(assets/nexa-memkeeper.ico)이 없어 임베드를 건너뜁니다.");
+        String::new()
+    };
+
     let rc_src = out.join("version.rc");
     let res = out.join("version.res");
     std::fs::write(
         &rc_src,
         format!(
-            r#"1 VERSIONINFO
+            r#"{icon_line}1 VERSIONINFO
 FILEVERSION {a},{b},{c},0
 PRODUCTVERSION {a},{b},{c},0
 FILEOS 0x4
