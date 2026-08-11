@@ -4,6 +4,7 @@
 
 ## 2026-08-11
 
+- 2차: winget 재확인 — 상태 변화 없음(승인 대기). PR 목록의 **빨간 `✗ 1/19`은 winget-pkgs 자체 봇 job 취소**일 뿐 매니페스트 문제가 아님을 실측 확인(병합된 남의 PR에도 동일). 큐 순번 238건. → [journal/2026-08-11](journal/2026-08-11.md)
 - 1차: 심사 2차 점검 — **choco 2건이 "유지관리자 조치 대기"**(nuspec 설명의 이메일 = Requirement 위반) → 이메일 제거 + **동일 버전 재제출 워크플로**(`choco-resubmit.yml`)로 0.7.0 재제출 완료(`Pending automated review` 복귀). winget 2건은 검증 통과·승인 대기. → [journal/2026-08-11](journal/2026-08-11.md)
 
 ## 2026-08-08

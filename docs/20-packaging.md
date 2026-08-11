@@ -149,6 +149,39 @@ moderation review"*, 즉 **같은 버전 번호로 덮어쓴다**(모더레이�
 | Requirement | `An email address was found in the field Description.` — nuspec에 이메일 금지 | 설명의 상업 라이선스 문의처를 **[LICENSE.md](../LICENSE.md) 링크로 교체**(연락처 자체는 라이선스 문서에 남는다) |
 | Note | `owners`(관리자)와 `authors`(제작자)가 같음 | 조치 불필요 — 실제로 동일 주체다. 모더레이터가 확인한다 |
 
+### 7-7. winget PR 체크 읽는 법 — 빨간 ✗는 대개 우리 것이 아니다
+
+PR 목록에 `✗ 1/19`처럼 빨간 표시가 떠도 **매니페스트 문제가 아닌 경우가 대부분**이다.
+08-11 [#413829](https://github.com/microsoft/winget-pkgs/pull/413829) 실측으로 정리한다.
+
+| 결론 | 개수 | 정체 |
+| --- | --- | --- |
+| SUCCESS | 1 | `license/cla`(CLA 서명) |
+| SKIPPED | 15 | `Manifest Validation Diagnosis` · `Missing Dependency Assist` · `Wingetbot PR Triage`의 단계 |
+| CANCELLED | 3 | 위 봇 워크플로의 `safe_outputs` · `conclusion` |
+
+- 저 셋은 **winget-pkgs 저장소 자신의 봇 워크플로**다(`pull_request_target`으로 도는 진단·분류
+  자동화). 문제가 있을 때만 개입하려고 대기하는 트리거라, 조건이 안 맞으면 `detection`이 SKIP되고
+  뒤따르는 job이 **취소**된다 — 취소된 job은 시작·종료가 같은 초이고 **실행된 스텝이 0개**다.
+  GitHub가 CANCELLED를 실패로 집계해 아이콘만 빨개진다.
+- **진짜 검증은 Azure Pipelines**다. wingetbot 코멘트의 파이프라인 링크가 그것이고, 결과로
+  `Azure-Pipeline-Passed` + `Validation-Completed` 라벨이 붙는다. **라벨을 보고 판단한다.**
+
+> 📌 **아이콘을 믿지 마라**: 목록에서 초록으로 보이던 [#413830](https://github.com/microsoft/winget-pkgs/pull/413830)도
+> API로 조회하면 롤업 상태가 **똑같이 `FAILURE`**였다(08-11). 두 PR은 같은 상태이고, ✓/✗ 차이는
+> 집계 타이밍일 뿐이다. 08-10에 **병합된** 남의 PR [#412583](https://github.com/microsoft/winget-pkgs/pull/412583)에도
+> 같은 CANCELLED가 11건 있었다 — 병합을 막지 않는다.
+
+조회 명령(둘 다 `gh` 필요):
+
+```bash
+# 결론별 집계 — SKIPPED/CANCELLED만 있고 FAILURE가 없으면 우리 탓이 아니다
+gh pr view <PR> --repo microsoft/winget-pkgs --json statusCheckRollup \
+  --jq '[.statusCheckRollup[]|{k:"\(.workflowName)/\(.name)",c:.conclusion}]|unique|.[]|"\(.c)\t\(.k)"'
+# 실제 판단 근거 = 라벨
+gh pr view <PR> --repo microsoft/winget-pkgs --json labels --jq '[.labels[].name]'
+```
+
 ## 8. 서명 (미정)
 
 코드 서명 인증서는 아직 없다. 확보하면 `signtool`을 `pack.ps1`의 게이트 통과 직후에 끼워 넣고,
