@@ -129,6 +129,26 @@ winget 패키지 하나에 설치형과 포터블을 함께 담을 수 없다 �
 3. **Chocolatey**: 계정 + API 키 발급 → 첫 패키지는 **모더레이션 심사**(무서명 설치본은 지적이 잦다).
 4. 심사 통과 후 저장소 변수 `CHOCO_PUSH` / `WINGET_PUBLISH`를 `true`로.
 
+### 7-6. Chocolatey 지적 대응 — **같은 버전**을 다시 올린다
+
+모더레이션이 `Waiting for Maintainer to take corrective action`이면 자동 검사가 **Requirements**를
+잡은 것이다. Requirements는 반드시 고쳐야 승인된다(Notes는 안 고쳐도 승인 가능).
+🔴 이때 **새 버전을 올리면 안 된다** — 규정은 *"The exact same version should be uploaded during
+moderation review"*, 즉 **같은 버전 번호로 덮어쓴다**(모더레이션 중인 버전만 덮어쓸 수 있다).
+
+태그를 새로 달지 않고 고치기 위한 수단이
+[`choco-resubmit.yml`](../.github/workflows/choco-resubmit.yml)이다 —
+**Actions > "choco resubmit" > Run workflow**(버전 입력, 비우면 최신 릴리스 태그).
+릴리스 자산을 다시 받아 해시를 계산하므로 재제출본이 최초 제출본과 **같은 바이너리**를 가리킨다.
+게시 스위치 규약은 §7-1과 같다(변수·시크릿이 없으면 nupkg만 만들고 멈춤).
+
+**08-08 지적 이력**(2패키지 동일):
+
+| 등급 | 내용 | 조치 |
+| --- | --- | --- |
+| Requirement | `An email address was found in the field Description.` — nuspec에 이메일 금지 | 설명의 상업 라이선스 문의처를 **[LICENSE.md](../LICENSE.md) 링크로 교체**(연락처 자체는 라이선스 문서에 남는다) |
+| Note | `owners`(관리자)와 `authors`(제작자)가 같음 | 조치 불필요 — 실제로 동일 주체다. 모더레이터가 확인한다 |
+
 ## 8. 서명 (미정)
 
 코드 서명 인증서는 아직 없다. 확보하면 `signtool`을 `pack.ps1`의 게이트 통과 직후에 끼워 넣고,
