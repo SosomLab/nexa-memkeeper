@@ -1,0 +1,92 @@
+# Chocolatey 모더레이션 재제출 — **같은 버전**의 nupkg를 고쳐 다시 올린다.
+#
+# 왜 별도 워크플로인가: release.yml의 choco 단계는 **태그 push에서만** 돈다. 모더레이션 지적
+# ("Waiting for Maintainer to take corrective action")은 새 버전이 아니라
+# **동일 버전 재업로드**로 푸는 것이 규정이다("The exact same version should be uploaded
+# during moderation review" — docs/20 §7-6). 태그를 새로 달지 않고 고칠 수단이 필요하다.
+#
+# 실행: Actions > "choco resubmit" > Run workflow (버전 입력, 기본 = 최신 릴리스 태그)
+#   - 저장소 변수 `CHOCO_PUSH=true` + 시크릿 `CHOCO_API_KEY`가 있어야 실제로 올라간다.
+#   - 둘 중 하나라도 없으면 **nupkg만 만들어 아티팩트로 남기고 멈춘다**(안전 기본값).
+name: choco resubmit
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "재제출할 버전(비우면 최신 릴리스 태그)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  resubmit:
+    runs-on: windows-latest
+    env:
+      CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # 해시는 Release에 올라간 **그 파일**을 직접 받아 계산한다(winget-submit.yml과 같은 원칙).
+      # 재제출본이 최초 제출본과 같은 바이너리를 가리켜야 모더레이터가 다시 검증할 수 있다.
+      - name: 버전·자산 해시 확인 (Release가 이미 있어야 한다)
+        id: rel
+        shell: pwsh
+        run: |
+          $ver = "${{ inputs.version }}"
+          if (-not $ver) { $ver = (gh release view --json tagName --jq .tagName).Trim() }
+          $ver = $ver.TrimStart("v")
+          $base = "https://github.com/${{ github.repository }}/releases/download/$ver"
+          curl.exe -sL -o setup.exe    "$base/NexaMemKeeper-$ver-setup.exe"
+          curl.exe -sL -o portable.zip "$base/NexaMemKeeper-$ver-portable.zip"
+          foreach ($f in "setup.exe", "portable.zip") {
+            if ((Get-Item $f).Length -lt 100KB) { throw "자산을 받지 못했습니다: $f (버전 $ver 확인)" }
+          }
+          "version=$ver"                                                   | Out-File $env:GITHUB_OUTPUT -Append
+          "setup=$((Get-FileHash setup.exe -Algorithm SHA256).Hash.ToLower())"       | Out-File $env:GITHUB_OUTPUT -Append
+          "portable=$((Get-FileHash portable.zip -Algorithm SHA256).Hash.ToLower())" | Out-File $env:GITHUB_OUTPUT -Append
+          Write-Output "version=$ver"
+
+      - name: nupkg 팩 — 버전·체크섬 주입
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.rel.outputs.version }}"
+          $pkgs = @(
+            @{ Id = "nexa-memkeeper";          Sha = "${{ steps.rel.outputs.setup }}" }
+            @{ Id = "nexa-memkeeper.portable"; Sha = "${{ steps.rel.outputs.portable }}" }
+          )
+          foreach ($p in $pkgs) {
+            $ps1 = "packaging\chocolatey\$($p.Id)\tools\chocolateyinstall.ps1"
+            (Get-Content $ps1 -Raw).Replace("{{VERSION}}", $ver).Replace("{{CHECKSUM64}}", $p.Sha) |
+              Set-Content $ps1 -NoNewline
+            choco pack "packaging\chocolatey\$($p.Id)\$($p.Id).nuspec" --version $ver `
+              --outputdirectory packaging\chocolatey\out
+            if ($LASTEXITCODE -ne 0) { throw "choco pack 실패($($p.Id)): $LASTEXITCODE" }
+          }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: chocolatey-nupkg
+          path: packaging/chocolatey/out/*.nupkg
+
+      # 모더레이션 중인 버전은 같은 번호로 덮어쓸 수 있다(승인된 버전이면 409로 거부된다).
+      - name: Chocolatey push (CHOCO_PUSH 변수 + 시크릿 있을 때만)
+        if: env.CHOCO_API_KEY != '' && vars.CHOCO_PUSH == 'true'
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.rel.outputs.version }}"
+          foreach ($id in @("nexa-memkeeper", "nexa-memkeeper.portable")) {
+            choco push "packaging\chocolatey\out\$id.$ver.nupkg" `
+              --source https://push.chocolatey.org/ --api-key $env:CHOCO_API_KEY
+            if ($LASTEXITCODE -ne 0) { throw "choco push 실패($id): $LASTEXITCODE" }
+          }
+
+      - name: 제출을 건너뛴 경우 안내
+        if: env.CHOCO_API_KEY == '' || vars.CHOCO_PUSH != 'true'
+        shell: pwsh
+        run: |
+          Write-Output "nupkg만 만들었습니다(아티팩트 chocolatey-nupkg)."
+          Write-Output "실제 재제출하려면 시크릿 CHOCO_API_KEY + 변수 CHOCO_PUSH=true 가 필요합니다."
