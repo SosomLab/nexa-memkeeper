@@ -7,8 +7,9 @@
 - 🔴 **Chocolatey 2건은 "유지관리자 조치 대기"**였다 — nuspec 설명의 **이메일 주소**가 필수 항목(Requirement) 위반. 08-07 17:37에 이미 실패해 있었는데 08-08 점검(피드 조회)으로는 보이지 않았다.
 - 조치: 설명의 상업 라이선스 문의처를 **LICENSE.md 링크로 교체**(연락처는 라이선스 문서에 그대로) → `choco pack` 2건 성공 · nupkg 내 이메일 **0건** 확인.
 - **`choco-resubmit.yml` 추가** — 태그 없이 **같은 버전**을 다시 올린다(규정상 새 버전 금지). 릴리스 자산을 다시 받아 해시를 계산한다.
+- ✅ **재제출 완료**([run](https://github.com/SosomLab/nexa-memkeeper/actions/runs/31462904180)) — 2패키지 모두 push 성공, 페이지 상태 **`Waiting for Maintainer` → `Pending automated review`** 확인.
 - **winget PR 2건은 검증 통과 · 사람 승인 대기**(`Validation-Completed`) — 할 일 없음.
-- 🔴 남은 사람 손 = **Actions > "choco resubmit" 실행**(`CHOCO_PUSH`는 이미 on).
+- 다음 = 양쪽 채널 심사 결과 대기. 지적이 또 오면 같은 워크플로를 다시 돌린다.
 - 상세 → [journal/2026-08-11](journal/2026-08-11.md)
 
 ## 직전(2026-08-08 12차) — 패키지 심사 상태(첫 점검)

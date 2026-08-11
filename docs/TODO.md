@@ -3,8 +3,8 @@
 > 목표순. ID·우선(P0~P2)·규모(소/중/대)·의존·상태. 완료 항목은 상태만 바꾸고 지우지 않는다.
 >
 > **남은 일(08-11 기준)**
-> - 사용자: **M5-5c**(choco 재제출 워크플로 실행, P1) · **M5-3**(설치 왕복 QA, P0) · **M3-3**(앱 홈페이지 URL 확정 시 한 줄)
-> - 대기: winget 2건 — 검증 통과, 모더레이터 승인만 남음
+> - 사용자: **M5-3**(설치 왕복 QA, P0) · **M3-3**(앱 홈페이지 URL 확정 시 한 줄)
+> - 대기: choco 2건(재제출 후 자동 검증) · winget 2건(검증 통과, 승인만 남음)
 > - 코드 후보: X-1 설정 UI · X-4(배터리) · X-5(지연 시작) · X-6(트레이 표시 모드)
 
 | ID | 항목 | 우선 | 규모 | 의존 | 상태 |
@@ -34,7 +34,7 @@
 | M5-6 | Wiki 유지 — UI 변경 시 `scripts/capture-shots.ps1` 재실행 + 해당 페이지 갱신 | P2 | 소 | — | ♻️ 상시 |
 | M5-5a | **Chocolatey 등록** — `nexa-memkeeper`·`nexa-memkeeper.portable` 0.7.0 push 완료, 자동 검사·모더레이션 대기([큐](https://ch0.co/moderation)) | P1 | 중 | M5-4 | ✅ 08-08(심사 대기) |
 | M5-5b | **winget 등록** — PR 2건 제출 완료([#413829 설치형](https://github.com/microsoft/winget-pkgs/pull/413829) · [#413830 포터블](https://github.com/microsoft/winget-pkgs/pull/413830)), **검증 통과**(`Validation-Completed`) · 사람 승인 대기 | P1 | 소 | M5-4 | ✅ 08-08(승인 대기) |
-| M5-5c | **choco 지적 대응** — nuspec 설명의 이메일 제거(Requirement 위반) 완료. 남은 것 = **Actions > "choco resubmit" 실행**으로 0.7.0 재제출([20 §7-6](20-packaging.md)) | P1 | 소 | M5-5a | ☐ **사용자 실행** |
+| M5-5c | **choco 지적 대응** — nuspec 이메일 제거 + `choco resubmit`으로 0.7.0 동일 버전 재제출([20 §7-6](20-packaging.md)). 페이지 상태 `Pending automated review`로 복귀 | P1 | 소 | M5-5a | ✅ 08-11(재심사 대기) |
 | M5-3 | 설치본 실검증 — [최신 릴리스 자산](https://github.com/SosomLab/nexa-memkeeper/releases/latest)으로 설치/제거 왕복 확인([20 §5](20-packaging.md)). 로컬 생성은 Inno 설치 시 |  P0 | 소 | M5-2 | ☐ **사용자 QA** |
 | X-3 | **정리 히스토리** — `history.csv`(최근 200줄, 계기 포함) + 메인 화면 메뉴에서 열기 | P2 | 소 | E-1 | ✅ 08-08 |
 | X-1 | **워치리스트 표적 트림** — `[watch] enabled/entries`, 프로세스별 쿨다운·보호 목록 준수([09 §5](09-settings-schema.md)) | P1 | 중 | M4-1 | ✅ 08-08 |

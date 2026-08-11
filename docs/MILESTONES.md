@@ -29,7 +29,7 @@
 | 채널 | 패키지 | 상태 |
 | --- | --- | --- |
 | GitHub Releases | 설치본 exe · 설치본 ZIP · 포터블 ZIP · SHA256SUMS | ✅ 자동(태그 push) |
-| Chocolatey | `nexa-memkeeper` · `nexa-memkeeper.portable` | 🔴 **조치 대기** — 자동 검증이 nuspec 이메일을 잡았다(08-07). 수정 완료, **`choco resubmit`으로 0.7.0 재제출 필요**([20 §7-6](20-packaging.md)) |
+| Chocolatey | `nexa-memkeeper` · `nexa-memkeeper.portable` | ⏳ **재심사 대기** — 자동 검증이 nuspec 이메일을 잡아(08-07) 수정 후 0.7.0 동일 버전 재제출(08-11, [20 §7-6](20-packaging.md)) |
 | winget | `SosomLab.NexaMemKeeper` · `.Portable` | ⏳ **자동 검증 통과**, 사람 승인 대기([#413829](https://github.com/microsoft/winget-pkgs/pull/413829) · [#413830](https://github.com/microsoft/winget-pkgs/pull/413830)) |
 
 > 승인 후에는 태그 하나로 세 채널이 함께 갱신된다(변수 `CHOCO_PUSH`·`WINGET_PUBLISH` 모두 on).

@@ -4,7 +4,7 @@
 
 ## 2026-08-11
 
-- 1차: 심사 2차 점검 — **choco 2건이 "유지관리자 조치 대기"**(nuspec 설명의 이메일 = Requirement 위반) → 이메일 제거 + **동일 버전 재제출 워크플로**(`choco-resubmit.yml`) 추가. winget 2건은 검증 통과·승인 대기. → [journal/2026-08-11](journal/2026-08-11.md)
+- 1차: 심사 2차 점검 — **choco 2건이 "유지관리자 조치 대기"**(nuspec 설명의 이메일 = Requirement 위반) → 이메일 제거 + **동일 버전 재제출 워크플로**(`choco-resubmit.yml`)로 0.7.0 재제출 완료(`Pending automated review` 복귀). winget 2건은 검증 통과·승인 대기. → [journal/2026-08-11](journal/2026-08-11.md)
 
 ## 2026-08-08
 

@@ -55,7 +55,7 @@
 
 ## 5. 다음 단계 (2026-08-11 갱신)
 
-1. **M5-5c — choco 재제출**: nuspec 이메일 지적을 고쳤다. 🔴 남은 것 = **Actions > "choco resubmit" 실행**(0.7.0 동일 버전 재업로드 — 새 버전 금지, [20 §7-6](docs/20-packaging.md)).
-2. **M5-3 — 설치본 실검증**: [최신 릴리스](https://github.com/SosomLab/nexa-memkeeper/releases/latest) 자산으로 설치 → 상주 → 제거 왕복([20 §5](docs/20-packaging.md)). P0인데 아직 미확인.
-3. **M5-5b — winget**: PR [#413829](https://github.com/microsoft/winget-pkgs/pull/413829)·[#413830](https://github.com/microsoft/winget-pkgs/pull/413830) 검증 통과, 모더레이터 승인 대기 — 할 일 없음.
+1. **M5-3 — 설치본 실검증**: [최신 릴리스](https://github.com/SosomLab/nexa-memkeeper/releases/latest) 자산으로 설치 → 상주 → 제거 왕복([20 §5](docs/20-packaging.md)). P0인데 아직 미확인.
+2. **패키지 심사 대기(할 일 없음)** — choco 2건은 지적(nuspec 이메일) 수정 후 08-11 동일 버전 재제출 완료, winget [#413829](https://github.com/microsoft/winget-pkgs/pull/413829)·[#413830](https://github.com/microsoft/winget-pkgs/pull/413830)은 검증 통과·승인 대기. 지적이 또 오면 **Actions > "choco resubmit"**([20 §7-6](docs/20-packaging.md)).
+3. 🔴 **choco 상태는 피드가 아니라 패키지 페이지**(`community.chocolatey.org/packages/<id>`)로 확인한다 — 피드 조회로는 "조치 대기"를 놓친다(08-08 실수).
 4. 남은 기능 후보: X-1 **설정 UI**(현재 파일 설정만) · X-4(배터리 인식) · X-5(부팅 후 지연 시작) · X-6(트레이 표시 모드) — [05 §5](docs/05-requirements.md).
