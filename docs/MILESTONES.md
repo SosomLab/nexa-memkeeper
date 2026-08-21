@@ -24,16 +24,17 @@
 
 > 기능 후보([05 §5](05-requirements.md)) 채택 현황: **X-1·X-2·X-3·X-7 완료**, X-4(배터리)·X-5(지연 시작)·X-6(트레이 표시 모드)는 ☐ 판단 대기.
 
-### 배포 채널 현황 (08-08)
+### 배포 채널 현황 (08-21 갱신)
 
 | 채널 | 패키지 | 상태 |
 | --- | --- | --- |
 | GitHub Releases | 설치본 exe · 설치본 ZIP · 포터블 ZIP · SHA256SUMS | ✅ 자동(태그 push) |
-| Chocolatey | `nexa-memkeeper` · `nexa-memkeeper.portable` | ⏳ **재심사 대기** — 자동 검증이 nuspec 이메일을 잡아(08-07) 수정 후 0.7.0 동일 버전 재제출(08-11, [20 §7-6](20-packaging.md)) |
-| winget | `SosomLab.NexaMemKeeper` · `.Portable` | ⏳ **자동 검증 통과**(`Validation-Completed`), 사람 승인 대기 — 큐 순번 대기일 뿐 조치 없음(08-11 재확인, [#413829](https://github.com/microsoft/winget-pkgs/pull/413829) · [#413830](https://github.com/microsoft/winget-pkgs/pull/413830)) |
+| Chocolatey | `nexa-memkeeper` · `nexa-memkeeper.portable` | ⏳ **배지 `Ready`(= Ready for Reviewer)** — 자동 검증·패키지 테스트·바이러스 스캔 전부 통과(08-11), 사람 모더레이션만 남음. 🔴 단 **제거 스크립트 버그**(§7-8)를 08-21에 고쳤다 → 반영하려면 동일 버전 재제출 필요 |
+| winget | `SosomLab.NexaMemKeeper` · `.Portable` | ⏳ **자동 검증 통과**(`Validation-Completed`), 사람 승인 대기 — 조치 라벨 없음. 앞선 미처리 PR 234건(08-21) · 최초 기여자는 사람 검토를 따로 받는다([#413829](https://github.com/microsoft/winget-pkgs/pull/413829) · [#413830](https://github.com/microsoft/winget-pkgs/pull/413830)) |
 
 > 승인 후에는 태그 하나로 세 채널이 함께 갱신된다(변수 `CHOCO_PUSH`·`WINGET_PUBLISH` 모두 on).
 > 🔴 상태는 **choco = 패키지 페이지 · winget = 라벨**로 읽는다([20 §7-6·§7-7](20-packaging.md)) — 피드/체크 아이콘은 오독을 부른다.
+> 승인 기준 전면 대조 결과 **남은 저지 요소 없음**([20 §7-9](20-packaging.md), 08-21).
 
 ### 릴리스 이력
 
