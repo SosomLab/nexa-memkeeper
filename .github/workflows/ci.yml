@@ -36,6 +36,33 @@ jobs:
       - name: 예산 게이트 + 포터블 ZIP (docs/18 §4 · docs/20 §2)
         shell: pwsh
         run: pwsh packaging/pack.ps1 -SkipBuild -SkipInstaller
+      # 패키징 PowerShell 검사 — chocolatey 검증기는 **Windows PowerShell 5.1**로 스크립트를 돌린다.
+      # 2026-08-11 모더레이션에서 chocolateyuninstall.ps1이 `"$packageName: …"` 보간 때문에 통째로
+      # 파싱 실패해 `choco uninstall`이 -1로 죽었다(docs/20 §7-8). BOM이 없으면 같은 5.1이 한글을
+      # ANSI로 읽어 메시지가 깨진다. 둘 다 CI에서 막는다.
+      - name: 패키징 스크립트 구문·BOM 검사 (docs/20 §7-8)
+        shell: pwsh
+        run: |
+          $bad = 0
+          foreach ($f in Get-ChildItem packaging -Recurse -Filter *.ps1) {
+            $errs = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$errs) | Out-Null
+            if ($errs.Count) {
+              $bad++
+              Write-Output "구문 오류: $($f.FullName)"
+              $errs | ForEach-Object { Write-Output "  line $($_.Extent.StartLineNumber): $($_.Message)" }
+            }
+            $bytes = [System.IO.File]::ReadAllBytes($f.FullName)
+            $hasBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+            $nonAscii = @($bytes | Where-Object { $_ -gt 0x7F }).Count -gt 0
+            if ($nonAscii -and -not $hasBom) {
+              $bad++
+              Write-Output "BOM 없음(비ASCII 포함 — PS 5.1이 ANSI로 읽어 깨진다): $($f.FullName)"
+            }
+          }
+          if ($bad) { throw "패키징 스크립트 검사 실패: $bad 건" }
+          Write-Output "패키징 스크립트 검사 통과"
+
       # 게시 스위치 상태를 눈으로 확인하기 위한 단계 — 값은 절대 찍지 않고 **설정 여부만** 본다.
       # (시크릿은 API로 조회할 수 없어, 릴리스를 걸기 전에 이 출력으로 상태를 확인한다.)
       - name: 게시 스위치 상태 (값 노출 없음 — docs/20 §7-1)

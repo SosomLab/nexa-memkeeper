@@ -1,4 +1,4 @@
-# 배포 산출물 생성 — 포터블 ZIP + 설치형 exe (DR-9, 절차 SSOT = docs/20-packaging.md)
+﻿# 배포 산출물 생성 — 포터블 ZIP + 설치형 exe (DR-9, 절차 SSOT = docs/20-packaging.md)
 #
 #   pwsh packaging\pack.ps1            # 릴리스 빌드 + 예산 게이트 + ZIP (+ Inno 있으면 설치본)
 #   pwsh packaging\pack.ps1 -SkipBuild # 이미 빌드된 산출물로 포장만

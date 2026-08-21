@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 # 포터블 = 설치기 없이 ZIP을 풀어 둔다. 설정은 exe 옆 data\settings.ini에 생기고,
 # choco 제거 시 tools 폴더째 사라진다(설정도 함께 — 보존이 필요하면 설치형을 쓴다).

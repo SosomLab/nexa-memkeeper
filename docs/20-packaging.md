@@ -182,6 +182,31 @@ gh pr view <PR> --repo microsoft/winget-pkgs --json statusCheckRollup \
 gh pr view <PR> --repo microsoft/winget-pkgs --json labels --jq '[.labels[].name]'
 ```
 
+### 7-8. 패키징 `.ps1`은 **Windows PowerShell 5.1**이 읽는다 (08-21 실측)
+
+chocolatey 검증기·클라이언트는 `chocolateyinstall.ps1`/`chocolateyuninstall.ps1`을 pwsh 7이 아니라
+**Windows PowerShell 5.1**로 실행한다. 여기서 두 가지가 물린다.
+
+| 함정 | 증상 | 규칙 |
+| --- | --- | --- |
+| `"$var: 문자열"` 보간 | `$var:`를 **스코프 한정 변수**(`$env:PATH` 꼴)로 읽어 **파싱 자체가 실패** → 스크립트 전체가 실행되지 않고 exit `-1` | 콜론이 뒤따르면 **`${var}:`**로 감싼다 |
+| BOM 없는 UTF-8 | 5.1이 **시스템 ANSI 코드페이지**로 읽어 한글이 `ì œê±°`로 깨진다 | 패키징 `.ps1`은 **UTF-8 BOM**으로 저장 |
+
+08-21에 `nexa-memkeeper` 0.7.0의 `chocolateyuninstall.ps1`이 정확히 첫 줄에 걸려 있었다 —
+검증 결과가 *"Uninstall failed (allowed)"*였고, 로그를 열어 보니 line 10·14의 `"$packageName: …"`
+때문에 **`choco uninstall`이 한 번도 성공한 적이 없었다**. 파싱 실패라 분기와 무관하다.
+
+워크플로 쪽 함정도 하나 있다: `release.yml`·`choco-resubmit.yml`이 `{{VERSION}}`을 치환할 때 쓰는
+`Set-Content`는 **pwsh 7 기본값이 `utf8NoBOM`**이라 팩 시점에 BOM을 도로 벗긴다. 그래서
+**`-Encoding utf8BOM`을 명시**한다.
+
+두 규칙 모두 **CI가 강제**한다 — `ci.yml` windows job의 "패키징 스크립트 구문·BOM 검사"가
+`packaging/**/*.ps1`을 전부 파서에 태우고, 비ASCII를 포함하는데 BOM이 없으면 실패시킨다.
+
+> `-File $key.UninstallString.Trim('"')`은 정상이다. Inno는 `UninstallString`에 **인자 없는**
+> 따옴표 경로를 쓰고 `/SILENT`는 `QuietUninstallString`에 넣는다. 검증 스냅샷 XML의
+> `<UninstallString>`에 `/SILENT`가 붙어 보이는 것은 choco 자신의 직렬화 형식일 뿐이다.
+
 ## 8. 서명 (미정)
 
 코드 서명 인증서는 아직 없다. 확보하면 `signtool`을 `pack.ps1`의 게이트 통과 직후에 끼워 넣고,

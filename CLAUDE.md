@@ -53,9 +53,10 @@
 
 1. 이 CLAUDE.md + [docs/STATUS.md](docs/STATUS.md) → 2. [DEVLOG](docs/DEVLOG.md) 최상단 + 최신 journal → 3. 할 일 = [docs/TODO.md](docs/TODO.md)(P-1부터 순차).
 
-## 5. 다음 단계 (2026-08-11 갱신)
+## 5. 다음 단계 (2026-08-21 갱신)
 
-1. **M5-3 — 설치본 실검증**: [최신 릴리스](https://github.com/SosomLab/nexa-memkeeper/releases/latest) 자산으로 설치 → 상주 → 제거 왕복([20 §5](docs/20-packaging.md)). P0인데 아직 미확인.
-2. **패키지 심사 대기(할 일 없음)** — choco 2건은 지적(nuspec 이메일) 수정 후 08-11 동일 버전 재제출 완료, winget [#413829](https://github.com/microsoft/winget-pkgs/pull/413829)·[#413830](https://github.com/microsoft/winget-pkgs/pull/413830)은 검증 통과·승인 대기. 지적이 또 오면 **Actions > "choco resubmit"**([20 §7-6](docs/20-packaging.md)).
-3. 🔴 **심사 상태 읽는 법**([20 §7-6·§7-7](docs/20-packaging.md)): choco는 피드가 아니라 **패키지 페이지**(`community.chocolatey.org/packages/<id>`) — 피드 조회로는 "조치 대기"를 놓친다(08-08 실수). winget은 체크 아이콘이 아니라 **라벨**(`Validation-Completed`) — 빨간 `✗ 1/19`은 저장소 자체 봇 job 취소일 뿐이다(08-11 확인).
-4. 남은 기능 후보: X-1 **설정 UI**(현재 파일 설정만) · X-4(배터리 인식) · X-5(부팅 후 지연 시작) · X-6(트레이 표시 모드) — [05 §5](docs/05-requirements.md).
+1. 🔴 **M5-5d — choco 재제출 판단(사용자)**: `choco uninstall nexa-memkeeper`가 **항상 실패**하던 버그(`"$var:"` 보간 → PS 5.1 파싱 실패)를 08-21에 고쳤다([20 §7-8](docs/20-packaging.md)). 모더레이션 중인 0.7.0에 반영하려면 **Actions > "choco resubmit"**로 동일 버전 재제출이 필요하다(자동 검증은 처음부터 다시 돈다).
+2. **M5-3 — 설치본 실검증**: [최신 릴리스](https://github.com/SosomLab/nexa-memkeeper/releases/latest) 자산으로 설치 → 상주 → 제거 왕복([20 §5](docs/20-packaging.md)). P0인데 아직 미확인 — 위 버그가 **choco 경로에서만** 나는지 확인할 겸.
+3. **winget 심사 대기(할 일 없음)** — [#413829](https://github.com/microsoft/winget-pkgs/pull/413829)·[#413830](https://github.com/microsoft/winget-pkgs/pull/413830) 검증 통과·승인 대기. 앞선 미처리 PR 234건(08-21) — 최초 기여자는 사람 검토를 따로 받는다.
+4. 🔴 **심사 상태 읽는 법**([20 §7-6·§7-7](docs/20-packaging.md)): choco는 피드가 아니라 **패키지 페이지**(`community.chocolatey.org/packages/<id>`) — 피드 조회로는 "조치 대기"를 놓친다(08-08 실수). winget은 체크 아이콘이 아니라 **라벨**(`Validation-Completed`) — 빨간 `✗ 1/19`은 저장소 자체 봇 job 취소일 뿐이다(08-11 확인).
+5. 남은 기능 후보: X-1 **설정 UI**(현재 파일 설정만) · X-4(배터리 인식) · X-5(부팅 후 지연 시작) · X-6(트레이 표시 모드) — [05 §5](docs/05-requirements.md).

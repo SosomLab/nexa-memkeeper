@@ -61,7 +61,7 @@ jobs:
           foreach ($p in $pkgs) {
             $ps1 = "packaging\chocolatey\$($p.Id)\tools\chocolateyinstall.ps1"
             (Get-Content $ps1 -Raw).Replace("{{VERSION}}", $ver).Replace("{{CHECKSUM64}}", $p.Sha) |
-              Set-Content $ps1 -NoNewline
+              Set-Content $ps1 -NoNewline -Encoding utf8BOM
             choco pack "packaging\chocolatey\$($p.Id)\$($p.Id).nuspec" --version $ver `
               --outputdirectory packaging\chocolatey\out
             if ($LASTEXITCODE -ne 0) { throw "choco pack 실패($($p.Id)): $LASTEXITCODE" }
