@@ -22,7 +22,7 @@
     <projectSourceUrl>https://github.com/SosomLab/nexa-memkeeper</projectSourceUrl>
     <docsUrl>https://github.com/SosomLab/nexa-memkeeper/tree/main/docs</docsUrl>
     <bugTrackerUrl>https://github.com/SosomLab/nexa-memkeeper/issues</bugTrackerUrl>
-    <tags>nexa-memkeeper memory optimizer ram tray windows rust portable</tags>
+    <tags>nexa-memkeeper memory optimizer ram tray windows rust</tags>
     <summary>Tray-resident memory optimizer for Windows — reclaims idle memory while staying under 5 MB itself.</summary>
     <description><![CDATA[
 **Nexa MemKeeper** keeps an eye on Windows memory from the tray and reclaims what is

@@ -2,7 +2,18 @@
 
 > 최신이 맨 위(시간 역순, 같은 날 여러 건이면 "N차"로 스택). 상세는 [journal/](journal/), 여기는 요약만.
 
-## 2026-08-21 1차 — 저장소 최신화 · 심사 재점검에서 **제거 스크립트 버그** 발견
+## 2026-08-21 2차 — 승인 가능성 재검토: **막을 요소 없음**
+
+- 모더레이션 기준 문서 + validator 규칙 76건(CPMR0001~0076)과 제출물을 대조([20 §7-9](20-packaging.md)).
+- ✅ **1차 수정이 문서화된 규칙 위반이었음을 확인** — chocolatey 문서가 *"PowerShell scripts need to be saved in **UTF-8 with BOM**"*을 명시한다. 제거 실패도 모더레이터 확인 항목(*"Does the package uninstall correctly? (this means the **package**, not the underlying software)"*)에 그대로 있다.
+- ✅ **이름 구조는 문제 없음** — 기준은 *"flag on '.' in name (unless `.portable`/`.install`)"*뿐. 바깥 id를 메타 패키지로 만들라는 요구는 없다(신규 패키지는 이름이 어긋나면 즉시 거부 대상이라 확인했다).
+- ✅ 다운로드 출처 검증 가능(`sosomlab.com` → `/apps/nexa-memkeeper` → GitHub Releases 0.7.0 링크 실재) · iconUrl jsDelivr/PNG/본인 저장소 · 유료 라이선스 명시 · owners=authors는 "관리자=제작자" 예외에 해당.
+- 🟡 새로 고침: 설치형 nuspec의 **`portable` 태그 제거**(사실과 다르고 "tags 남용" 항목에 걸릴 여지).
+- 🟡 남긴 것: `license` 태그(Guideline — 승인 저지 아님) · VirusTotal 1~5건(chocolatey-ops가 *"not enough detections to prevent the approval"* 명시, 무서명 오탐).
+- **결론: 자동 검사로 잡히는 문제 0. 사람 검토에서 걸릴 만했던 2건을 제거했다.** 재제출 시 큐 재진입, 자동 단계는 08-11 실측 약 4시간.
+- 상세 → [journal/2026-08-21](journal/2026-08-21.md)
+
+## 직전(2026-08-21 1차) — 저장소 최신화 · 심사 재점검에서 **제거 스크립트 버그** 발견
 
 - **저장소는 최신** — 원격·로컬 동일(f515496), 08-11 이후 새 커밋 0건.
 - **winget 2건 변화 없음**(`Validation-Completed`, 조치 라벨 없음). 앞선 미처리 PR **234건** — 08-19 대량 병합은 대부분 상시 기여자 건이고, **우리 번호 옆 #413828·#413831도 그때 병합**됐다. 최초 기여자는 사람 검토를 따로 받는다. **할 일 없음.**

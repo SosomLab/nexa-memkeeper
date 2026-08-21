@@ -35,7 +35,7 @@
 | M5-5a | **Chocolatey 등록** — `nexa-memkeeper`·`nexa-memkeeper.portable` 0.7.0 push 완료, 자동 검사·모더레이션 대기([큐](https://ch0.co/moderation)) | P1 | 중 | M5-4 | ✅ 08-08(심사 대기) |
 | M5-5b | **winget 등록** — PR 2건 제출 완료([#413829 설치형](https://github.com/microsoft/winget-pkgs/pull/413829) · [#413830 포터블](https://github.com/microsoft/winget-pkgs/pull/413830)), **검증 통과**(`Validation-Completed`) · 사람 승인 대기 | P1 | 소 | M5-4 | ✅ 08-08(승인 대기) |
 | M5-5c | **choco 지적 대응** — nuspec 이메일 제거 + `choco resubmit`으로 0.7.0 동일 버전 재제출([20 §7-6](20-packaging.md)). 페이지 상태 `Pending automated review`로 복귀 | P1 | 소 | M5-5a | ✅ 08-11(재심사 대기) |
-| M5-5d | 🔴 **choco 제거 스크립트 버그 수정** — `"$packageName:"` 보간이 PS 5.1에서 파싱 실패해 `choco uninstall`이 항상 exit -1([20 §7-8](20-packaging.md)). 수정·BOM 통일·CI 게이트 완료, **동일 버전 재제출은 사용자 지시 대기** | P0 | 소 | M5-5c | ☐ **사용자 판단**(코드는 완료) |
+| M5-5d | 🔴 **choco 제거 스크립트 버그 수정** — `"$packageName:"` 보간이 PS 5.1에서 파싱 실패해 `choco uninstall`이 항상 exit -1([20 §7-8](20-packaging.md)). 수정·BOM 통일·CI 게이트·태그 정리 완료. 승인 기준 전면 대조 결과 **남은 저지 요소 없음**([20 §7-9](20-packaging.md)) — **동일 버전 재제출은 사용자 지시 대기** | P0 | 소 | M5-5c | ☐ **사용자 판단**(코드는 완료) |
 | M5-3 | 설치본 실검증 — [최신 릴리스 자산](https://github.com/SosomLab/nexa-memkeeper/releases/latest)으로 설치/제거 왕복 확인([20 §5](20-packaging.md)). 로컬 생성은 Inno 설치 시 |  P0 | 소 | M5-2 | ☐ **사용자 QA** |
 | X-3 | **정리 히스토리** — `history.csv`(최근 200줄, 계기 포함) + 메인 화면 메뉴에서 열기 | P2 | 소 | E-1 | ✅ 08-08 |
 | X-1 | **워치리스트 표적 트림** — `[watch] enabled/entries`, 프로세스별 쿨다운·보호 목록 준수([09 §5](09-settings-schema.md)) | P1 | 중 | M4-1 | ✅ 08-08 |

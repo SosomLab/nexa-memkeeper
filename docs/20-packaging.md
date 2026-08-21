@@ -207,6 +207,32 @@ chocolatey 검증기·클라이언트는 `chocolateyinstall.ps1`/`chocolateyunin
 > 따옴표 경로를 쓰고 `/SILENT`는 `QuietUninstallString`에 넣는다. 검증 스냅샷 XML의
 > `<UninstallString>`에 `/SILENT`가 붙어 보이는 것은 choco 자신의 직렬화 형식일 뿐이다.
 
+### 7-9. 승인 관점 자체 점검 (08-21)
+
+[모더레이션 기준](https://docs.chocolatey.org/en-us/community-repository/moderation/)과 대조한 결과.
+자동 검사(validator·verifier·스캔)는 08-11에 **전부 통과**했고 배지는 `Ready`(= Ready for Reviewer)다.
+남은 것은 사람 판단이며, 그중 우리가 손댈 수 있었던 항목은 다음과 같다.
+
+| 기준 | 우리 상태 |
+| --- | --- |
+| **"PowerShell scripts need to be saved in UTF-8 with BOM"**([문서](https://docs.chocolatey.org/en-us/create/create-packages/)) | 🔴 위반이었다 → §7-8에서 수정 |
+| "Does the package uninstall correctly?" (요구사항 목록, 다만 *"more a guideline at the moment"*) | 🔴 실패였다 → §7-8에서 수정 |
+| iconUrl = CDN 경유(GitHub raw 금지)·본인 통제 위치·PNG | ✅ jsDelivr · 우리 저장소 · PNG(200 확인) |
+| "download는 projectUrl에서 확인되는 공식 위치" | ✅ `sosomlab.com` → `/apps/nexa-memkeeper` → GitHub Releases 링크(0.7.0 포함). 다만 사이트가 한국어라 **모더레이터가 두 번 눌러야** 확인된다 |
+| "description에 유료 라이선스 필요 여부 명시" | ✅ `### License` 절에 명시 |
+| licenseUrl · requireLicenseAcceptance · projectUrl · packageSourceUrl · releaseNotes · summary · title | ✅ 전부 존재 |
+| "authors(제작자)를 owners(관리자)로 쓰지 않는다 — **단, 관리자가 제작자면 예외**" | ✅ 우리가 제작자다(08-11 Note로 이미 안내됨) |
+| 브랜드 신규 패키지 id 규약 — `.`은 **`.portable`/`.install`만 예외** | ✅ `nexa-memkeeper` / `nexa-memkeeper.portable`. 바깥 id를 메타 패키지로 만들라는 요구는 문서에 **없다** |
+| "tags 남용 금지" | 🟡 설치형에도 `portable` 태그가 붙어 있었다 → 제거 |
+| (Guideline) "라이선스가 필요한 소프트웨어는 `license` 태그" | 🟡 미적용 — 상업용만 유료라 판단 보류(Guideline이라 승인은 막지 않는다) |
+
+**바이러스 스캔**: 설치형만 VirusTotal 1~5건 탐지 — chocolatey-ops가 *"not enough detections to
+prevent the approval"*로 명시했다. 무서명 + 메모리 조작 도구라 나오는 통상적인 오탐이며,
+서명 확보([§8](#8-서명-미정)) 전까지는 계속 나온다.
+
+**재제출 비용**: 재제출하면 상태가 `Pending` → `Ready`로 다시 돌아 큐에 재진입한다. 08-11 실측
+기준 자동 단계는 **약 4시간**(05:49 제출 → 06:20 검증 → 07:45 테스트 → 10:02 스캔)이다.
+
 ## 8. 서명 (미정)
 
 코드 서명 인증서는 아직 없다. 확보하면 `signtool`을 `pack.ps1`의 게이트 통과 직후에 끼워 넣고,
