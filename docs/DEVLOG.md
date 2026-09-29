@@ -4,6 +4,7 @@
 
 ## 2026-09-29
 
+- 2차: 진행사항 최신화 — 심사 재확인(choco `Pending Automated Review`·winget OPEN, 변화 없음) + 패키징 SSOT에 **[20 §7-10](20-packaging.md) "승인된 버전은 패치로"** 신설. → [journal/2026-09-29](journal/2026-09-29.md)
 - 1차: 저장소 최신화(변경 없음) + 배포 필요성 검토 — winget 2·choco 2 **모두 승인·게시**됐으나, 승인된 choco 설치형이 08-11본이라 **제거 버그가 그대로 실린 것**을 공개 nupkg 파싱으로 확인 → **`0.7.1` 패치 배포**(앱 코드 무변경). choco 2건 push·winget PR 2건(#443189·#443190) 제출, release.yml에 포크 동기화 추가. → [journal/2026-09-29](journal/2026-09-29.md)
 
 ## 2026-08-21

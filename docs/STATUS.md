@@ -9,6 +9,7 @@
 - **[0.7.1 릴리스](https://github.com/SosomLab/nexa-memkeeper/releases/tag/0.7.1)** — 앱 코드 무변경(버전 리소스만). exe 0.67MB · 테스트 57 green · 워크플로 2m40s 성공.
 - 제출: choco `nexa-memkeeper`·`.portable` 0.7.1 → `Pending Automated Review` · winget [#443189](https://github.com/microsoft/winget-pkgs/pull/443189)(설치형)·[#443190](https://github.com/microsoft/winget-pkgs/pull/443190)(포터블).
 - push된 nupkg 재검증: 제거 스크립트 파싱 오류 0 · BOM 있음. release.yml에 **winget 포크 동기화** 단계 추가(첫 실행 정상).
+- 2차 재확인(약 30분 뒤): 변화 없음 — choco 자동 단계는 약 4시간(08-11 실측). 교훈은 [20 §7-10](20-packaging.md)에 정리.
 - 상세 → [journal/2026-09-29](journal/2026-09-29.md)
 
 ## 직전(2026-08-21 2차) — 승인 가능성 재검토: **막을 요소 없음**
