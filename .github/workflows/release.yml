@@ -112,6 +112,21 @@ jobs:
 
       # ── winget: 매니페스트 PR은 **Release 자산이 올라간 뒤**에야 만들 수 있다(URL·해시 참조).
       #    wingetcreate가 microsoft/winget-pkgs 포크에 PR을 연다 — 토큰·변수 둘 다 있을 때만.
+      #    포크가 upstream보다 뒤처지면 "could not be synced with the upstream commits"로 멈추므로
+      #    먼저 맞춘다(winget-submit.yml과 같은 단계 — 08-08 실측, docs/20 §7-4).
+      - name: winget-pkgs 포크 동기화
+        if: github.ref_type == 'tag' && env.WINGET_TOKEN != '' && vars.WINGET_PUBLISH == 'true'
+        shell: pwsh
+        run: |
+          $env:GH_TOKEN = $env:WINGET_TOKEN
+          $owner = (gh api user --jq .login).Trim()
+          Write-Output "토큰 계정: $owner"
+          gh repo sync "$owner/winget-pkgs" --source microsoft/winget-pkgs --force 2>&1 | Write-Output
+          if ($LASTEXITCODE -ne 0) {
+            Write-Output "포크 동기화 실패(포크가 없거나 권한 부족) — wingetcreate에 맡긴다"
+          }
+          $global:LASTEXITCODE = 0
+
       - name: winget 매니페스트 PR (WINGET_PUBLISH 변수 + 토큰 있을 때만)
         if: github.ref_type == 'tag' && env.WINGET_TOKEN != '' && vars.WINGET_PUBLISH == 'true'
         shell: pwsh
