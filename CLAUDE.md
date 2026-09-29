@@ -6,7 +6,7 @@
 ## 1. 이 프로젝트는
 
 **Nexa MemKeeper** = Windows **시스템 트레이 상주 초경량 메모리 최적화 도구** — 지속 관찰·회수로 여유 메모리 확보, Top 5 점유 팝업·프로세스 트리 뷰(쓰레드)·선택 종료/회수·간단 설정. **도구 자신의 점유 최소화가 정체성**(유휴 RSS ≤5MB 제안). 상세 [docs/00](docs/00-vision.md)·[docs/05](docs/05-requirements.md).
-현 단계: **`0.7.0` 릴리스(08-08)** — 알림 Active 병기(E-1)·주기 정리 비권장 표시(E-2)·고압력 재측정(E-3)·열 폭/창 위치 기억(M3-4)·워치리스트 표적 트림(X-1)·전체화면 억제(X-2)·정리 히스토리(X-3)까지 포함. exe 0.64MB·유휴 RSS 1.34MB·테스트 57 green. **효용성 실측([21](docs/21-effectiveness-measurement.md)) 결론: 평상시·중압력 모두 주기 정리는 이득 없음 — 기본값 변경 없음.**
+현 단계: **`0.7.1` 패치(09-29, 앱 코드 무변경 — choco 제거 스크립트 수정본 전 채널 재배포)**, 기능 기준선은 **`0.7.0`(08-08)** — 알림 Active 병기(E-1)·주기 정리 비권장 표시(E-2)·고압력 재측정(E-3)·열 폭/창 위치 기억(M3-4)·워치리스트 표적 트림(X-1)·전체화면 억제(X-2)·정리 히스토리(X-3)까지 포함. exe 0.64MB·유휴 RSS 1.34MB·테스트 57 green. **효용성 실측([21](docs/21-effectiveness-measurement.md)) 결론: 평상시·중압력 모두 주기 정리는 이득 없음 — 기본값 변경 없음.**
 
 <!-- 이전: M0~M4 완료(08-07 11차) — 트레이 셸·정리 엔진(영역 ①~⑤)·Top 5 팝업·메인 화면·설정 창(자동 정리 포함). exe 0.51MB·상주 유휴 1.31MB·테스트 37 green. 실기 QA 후 0.5.0 승격 -->
 
@@ -53,10 +53,10 @@
 
 1. 이 CLAUDE.md + [docs/STATUS.md](docs/STATUS.md) → 2. [DEVLOG](docs/DEVLOG.md) 최상단 + 최신 journal → 3. 할 일 = [docs/TODO.md](docs/TODO.md)(P-1부터 순차).
 
-## 5. 다음 단계 (2026-08-21 갱신)
+## 5. 다음 단계 (2026-09-29 갱신)
 
-1. 🔴 **M5-5d — choco 재제출 판단(사용자)**: `choco uninstall nexa-memkeeper`가 **항상 실패**하던 버그(`"$var:"` 보간 → PS 5.1 파싱 실패)를 08-21에 고쳤다([20 §7-8](docs/20-packaging.md)). 모더레이션 중인 0.7.0에 반영하려면 **Actions > "choco resubmit"**로 동일 버전 재제출이 필요하다(자동 검증은 처음부터 다시 돈다).
-2. **M5-3 — 설치본 실검증**: [최신 릴리스](https://github.com/SosomLab/nexa-memkeeper/releases/latest) 자산으로 설치 → 상주 → 제거 왕복([20 §5](docs/20-packaging.md)). P0인데 아직 미확인 — 위 버그가 **choco 경로에서만** 나는지 확인할 겸.
-3. **winget 심사 대기(할 일 없음)** — [#413829](https://github.com/microsoft/winget-pkgs/pull/413829)·[#413830](https://github.com/microsoft/winget-pkgs/pull/413830) 검증 통과·승인 대기. 앞선 미처리 PR 234건(08-21) — 최초 기여자는 사람 검토를 따로 받는다.
-4. 🔴 **심사 상태 읽는 법**([20 §7-6·§7-7](docs/20-packaging.md)): choco는 피드가 아니라 **패키지 페이지**(`community.chocolatey.org/packages/<id>`) — 피드 조회로는 "조치 대기"를 놓친다(08-08 실수). winget은 체크 아이콘이 아니라 **라벨**(`Validation-Completed`) — 빨간 `✗ 1/19`은 저장소 자체 봇 job 취소일 뿐이다(08-11 확인).
+1. **0.7.1 심사 대기(할 일 없음)** — choco `nexa-memkeeper`·`.portable` 0.7.1(`Pending Automated Review`) · winget [#443189](https://github.com/microsoft/winget-pkgs/pull/443189)·[#443190](https://github.com/microsoft/winget-pkgs/pull/443190). 0.7.0은 전 채널 게시 완료(winget 09-01, choco 09-02·03). 단 **choco 설치형 0.7.0은 제거 스크립트가 깨진 08-11본** — 0.7.1이 대체한다([journal/2026-09-29](docs/journal/2026-09-29.md)).
+2. **M5-3 — 설치본 실검증**: [최신 릴리스](https://github.com/SosomLab/nexa-memkeeper/releases/latest) 자산으로 설치 → 상주 → 제거 왕복([20 §5](docs/20-packaging.md)). P0인데 아직 미확인 — choco 0.7.1 승인 후 `choco install/uninstall`로 하면 제거 수정도 함께 확인된다.
+3. 🔴 **심사 상태 읽는 법**([20 §7-6·§7-7](docs/20-packaging.md)): choco는 피드가 아니라 **패키지 페이지**(`community.chocolatey.org/packages/<id>`) — 피드 조회로는 "조치 대기"를 놓친다(08-08 실수). winget은 체크 아이콘이 아니라 **라벨**(`Validation-Completed`) — 빨간 `✗ 1/19`은 저장소 자체 봇 job 취소일 뿐이다(08-11 확인).
+4. 🔴 **패키징 수정은 커밋만으로 끝나지 않는다** — 제출·승인된 버전에 반영됐는지 공개 nupkg로 확인할 것(08-21 수정이 09-02 승인본에 빠졌던 교훈).
 5. 남은 기능 후보: X-1 **설정 UI**(현재 파일 설정만) · X-4(배터리 인식) · X-5(부팅 후 지연 시작) · X-6(트레이 표시 모드) — [05 §5](docs/05-requirements.md).

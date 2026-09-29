@@ -2,9 +2,9 @@
 
 > 목표순. ID·우선(P0~P2)·규모(소/중/대)·의존·상태. 완료 항목은 상태만 바꾸고 지우지 않는다.
 >
-> **남은 일(08-21 기준)**
-> - 사용자: **M5-5d**(제거 버그 수정본 choco 재제출 여부, P0) · **M5-3**(설치 왕복 QA, P0) · **M3-3**(앱 홈페이지 URL 확정 시 한 줄)
-> - 대기: winget 2건(검증 통과, 큐 순번 대기 — 08-21 재확인, 조치 없음) · choco 2건(배지 `Ready`, 사람 모더레이션 대기)
+> **남은 일(09-29 기준)**
+> - 사용자: **M5-3**(설치 왕복 QA, P0 — 0.7.1 choco 설치형으로 하면 제거 수정도 함께 확인) · **M3-3**(앱 홈페이지 URL 확정 시 한 줄)
+> - 대기: **0.7.1** 심사 — choco 2건(`Pending Automated Review`) · winget [#443189](https://github.com/microsoft/winget-pkgs/pull/443189)·[#443190](https://github.com/microsoft/winget-pkgs/pull/443190). 0.7.0은 전 채널 게시 완료
 > - 코드 후보: X-1 설정 UI · X-4(배터리) · X-5(지연 시작) · X-6(트레이 표시 모드)
 
 | ID | 항목 | 우선 | 규모 | 의존 | 상태 |
@@ -35,7 +35,7 @@
 | M5-5a | **Chocolatey 등록** — `nexa-memkeeper`·`nexa-memkeeper.portable` 0.7.0 push 완료, 자동 검사·모더레이션 대기([큐](https://ch0.co/moderation)) | P1 | 중 | M5-4 | ✅ 08-08(심사 대기) |
 | M5-5b | **winget 등록** — PR 2건 제출 완료([#413829 설치형](https://github.com/microsoft/winget-pkgs/pull/413829) · [#413830 포터블](https://github.com/microsoft/winget-pkgs/pull/413830)), **검증 통과**(`Validation-Completed`) · 사람 승인 대기 | P1 | 소 | M5-4 | ✅ 08-08(승인 대기) |
 | M5-5c | **choco 지적 대응** — nuspec 이메일 제거 + `choco resubmit`으로 0.7.0 동일 버전 재제출([20 §7-6](20-packaging.md)). 페이지 상태 `Pending automated review`로 복귀 | P1 | 소 | M5-5a | ✅ 08-11(재심사 대기) |
-| M5-5d | 🔴 **choco 제거 스크립트 버그 수정** — `"$packageName:"` 보간이 PS 5.1에서 파싱 실패해 `choco uninstall`이 항상 exit -1([20 §7-8](20-packaging.md)). 수정·BOM 통일·CI 게이트·태그 정리 완료. 승인 기준 전면 대조 결과 **남은 저지 요소 없음**([20 §7-9](20-packaging.md)) — **동일 버전 재제출은 사용자 지시 대기** | P0 | 소 | M5-5c | ☐ **사용자 판단**(코드는 완료) |
+| M5-5d | 🔴 **choco 제거 스크립트 버그 수정** — `"$packageName:"` 보간이 PS 5.1에서 파싱 실패해 `choco uninstall`이 항상 exit -1([20 §7-8](20-packaging.md)). 수정·BOM 통일·CI 게이트·태그 정리 완료. 승인 기준 전면 대조 결과 **남은 저지 요소 없음**([20 §7-9](20-packaging.md)) — 승인된 0.7.0에는 수정 전 스크립트가 실려(09-29 공개 nupkg 확인) **`0.7.1` 패치로 전 채널 재배포** | P0 | 소 | M5-5c | ✅ 09-29(0.7.1 심사 중) |
 | M5-3 | 설치본 실검증 — [최신 릴리스 자산](https://github.com/SosomLab/nexa-memkeeper/releases/latest)으로 설치/제거 왕복 확인([20 §5](20-packaging.md)). 로컬 생성은 Inno 설치 시 |  P0 | 소 | M5-2 | ☐ **사용자 QA** |
 | X-3 | **정리 히스토리** — `history.csv`(최근 200줄, 계기 포함) + 메인 화면 메뉴에서 열기 | P2 | 소 | E-1 | ✅ 08-08 |
 | X-1 | **워치리스트 표적 트림** — `[watch] enabled/entries`, 프로세스별 쿨다운·보호 목록 준수([09 §5](09-settings-schema.md)) | P1 | 중 | M4-1 | ✅ 08-08 |

@@ -2,7 +2,16 @@
 
 > 최신이 맨 위(시간 역순, 같은 날 여러 건이면 "N차"로 스택). 상세는 [journal/](journal/), 여기는 요약만.
 
-## 2026-08-21 2차 — 승인 가능성 재검토: **막을 요소 없음**
+## 2026-09-29 1차 — `0.7.1` 패치 배포: choco 제거 버그 수정본 전 채널 제출
+
+- **0.7.0은 전 채널 게시 완료였다** — winget #413829·#413830 09-01 병합, choco 2건 09-02·09-03 승인.
+- 🔴 **그러나 승인된 choco 설치형은 08-11본** — 공개 nupkg의 제거 스크립트가 구문 오류 2건으로 파싱 실패(08-21 수정은 재제출 안 됨). 승인된 버전은 재업로드 불가 → 패치 버전.
+- **[0.7.1 릴리스](https://github.com/SosomLab/nexa-memkeeper/releases/tag/0.7.1)** — 앱 코드 무변경(버전 리소스만). exe 0.67MB · 테스트 57 green · 워크플로 2m40s 성공.
+- 제출: choco `nexa-memkeeper`·`.portable` 0.7.1 → `Pending Automated Review` · winget [#443189](https://github.com/microsoft/winget-pkgs/pull/443189)(설치형)·[#443190](https://github.com/microsoft/winget-pkgs/pull/443190)(포터블).
+- push된 nupkg 재검증: 제거 스크립트 파싱 오류 0 · BOM 있음. release.yml에 **winget 포크 동기화** 단계 추가(첫 실행 정상).
+- 상세 → [journal/2026-09-29](journal/2026-09-29.md)
+
+## 직전(2026-08-21 2차) — 승인 가능성 재검토: **막을 요소 없음**
 
 - 모더레이션 기준 문서 + validator 규칙 76건(CPMR0001~0076)과 제출물을 대조([20 §7-9](20-packaging.md)).
 - ✅ **1차 수정이 문서화된 규칙 위반이었음을 확인** — chocolatey 문서가 *"PowerShell scripts need to be saved in **UTF-8 with BOM**"*을 명시한다. 제거 실패도 모더레이터 확인 항목(*"Does the package uninstall correctly? (this means the **package**, not the underlying software)"*)에 그대로 있다.
