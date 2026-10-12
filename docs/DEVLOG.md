@@ -2,6 +2,10 @@
 
 > 시간 역순(최신 위), 항목당 1~2줄. 상세는 [journal/](journal/)이 원본, 여기는 요약 + 링크만.
 
+## 2026-10-12
+
+- 1차: **트레이 메뉴 머리줄 `0.0.1` 고정 버그 수정** — 버전 리소스와 같은 출처(build.rs `PRODUCT` + `CARGO_PKG_VERSION`)로 컴파일 시 생성. About·툴팁·창 제목은 점검 결과 이상 없음. → [journal/2026-10-12](journal/2026-10-12.md)
+
 ## 2026-09-29
 
 - 2차: 진행사항 최신화 — 심사 재확인(choco `Pending Automated Review`·winget OPEN, 변화 없음) + 패키징 SSOT에 **[20 §7-10](20-packaging.md) "승인된 버전은 패치로"** 신설. → [journal/2026-09-29](journal/2026-09-29.md)

@@ -14,6 +14,9 @@ const COMPANY: &str = "SosomLab";
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    // 제품명을 앱 코드에도 넘긴다(`env!("MK_PRODUCT_NAME")`) — 트레이 메뉴 머리줄이 버전 리소스와
+    // 같은 출처를 쓰게 하려는 것. 플랫폼 분기 전에 내보내야 비Windows `cargo check`도 통과한다.
+    println!("cargo:rustc-env=MK_PRODUCT_NAME={PRODUCT}");
     if std::env::var("CARGO_CFG_WINDOWS").is_err() {
         return;
     }

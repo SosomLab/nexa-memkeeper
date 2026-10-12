@@ -783,7 +783,13 @@ unsafe fn make_icon(percent: u32) -> HICON {
 /// 트레이 우클릭 메뉴 — M1: 지금 정리·승격 재시작·종료(목록·설정은 M2~M4에서 추가).
 unsafe fn show_menu(hwnd: HWND) {
     let Ok(menu) = CreatePopupMenu() else { return };
-    let _ = AppendMenuW(menu, MF_GRAYED, 0, w!("Nexa MemKeeper 0.0.1"));
+    // 머리줄 = 제품명 + 버전 — 버전 리소스와 같은 출처(build.rs `PRODUCT` + Cargo 버전).
+    // 하드코딩하면 릴리스마다 어긋난다(0.7.1까지 "0.0.1" 고정이던 버그).
+    let header: Vec<u16> = concat!(env!("MK_PRODUCT_NAME"), " ", env!("CARGO_PKG_VERSION"))
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    let _ = AppendMenuW(menu, MF_GRAYED, 0, PCWSTR(header.as_ptr()));
     let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
     let clean_flags = if CLEAN_BUSY.get() {
         MF_STRING | MF_GRAYED
