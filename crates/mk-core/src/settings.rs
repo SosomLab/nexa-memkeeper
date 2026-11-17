@@ -335,6 +335,9 @@ impl Settings {
         out.push_str(&format!("danger_percent = {}\n", self.danger_percent));
         out.push_str(&format!("notify = {}\n", b(self.notify)));
         out.push_str(&format!("hotkey_clean = {}\n", self.hotkey_clean));
+        // 빠뜨리면 설정 창에서 저장할 때마다 언어가 기본값으로 되돌아간다(11-18 — `apply`는
+        // `lang`을 아는 키로 읽으므로 "모르는 키 보존"으로도 살아남지 못한다).
+        out.push_str(&format!("lang = {}\n", self.lang));
         self.push_unknown(&mut out, "general");
 
         out.push_str("\n[auto]\n");
@@ -540,6 +543,24 @@ view_flat = false
         };
         let back = Settings::parse(&s.to_ini());
         assert_eq!(back, s);
+    }
+
+    #[test]
+    fn lang_survives_roundtrip() {
+        // 기본값("en")이 아닌 언어가 저장 → 재로드에서 살아남아야 한다. 기본값만 쓰는 왕복
+        // 시험으로는 `to_ini`가 키를 빠뜨려도 드러나지 않았다(11-18).
+        for lang in ["ko", "auto"] {
+            let s = Settings {
+                lang: lang.into(),
+                ..Settings::default()
+            };
+            let out = s.to_ini();
+            assert!(
+                out.contains(&format!("lang = {lang}")),
+                "lang 이 저장되지 않았다:\n{out}"
+            );
+            assert_eq!(Settings::parse(&out).lang, lang);
+        }
     }
 
     #[test]
