@@ -2,6 +2,14 @@
 
 > 시간 역순(최신 위), 항목당 1~2줄. 상세는 [journal/](journal/)이 원본, 여기는 요약 + 링크만.
 
+## 2026-11-18
+
+- 5차: **0.7.1 심사 종료 확인** — choco 2건 09-29 Approved(moderator virtualex) · winget #443189·#443190 09-29 MERGED. 대기 항목 닫음, 남은 건 M5-3 설치 왕복 QA. → [journal/2026-11-18](journal/2026-11-18.md)
+- 4차: 사용자 확정 진행 순서 — ① `fix/tray-header-version` 마무리 → ② 콘솔 창 방어 수정(C-1~C-3) → ③ X-5 지연 시작.
+- 3차: **e9d09cf 검증** — fmt·clippy·test 57 green · exe 708,096B · DLL 0 · CPU ~0%. 유휴 RSS 4.4MB는 설치본 A/B로 **측정 조건 차이** 판정(Private 두 빌드 모두 2.5~2.6MB, WS는 1.4~4.8MB 출렁임).
+- 2차: "시작 시 콘솔 창" 점검 — 이 프로그램이 원인일 가능성 낮음(GUI 서브시스템·인자 없는 Run 값). 방어할 잠재 위험 3건 TODO 등재.
+- 1차: 저장소 최신화(원격 변경 0건) · **세션 분담·자동화 개발 규칙 [22](22-session-and-automation-rules.md) 신설**(`50ae7dc`·`6be3373`) → [DR-16](10-decision-record.md).
+
 ## 2026-10-12
 
 - 1차: **트레이 메뉴 머리줄 `0.0.1` 고정 버그 수정** — 버전 리소스와 같은 출처(build.rs `PRODUCT` + `CARGO_PKG_VERSION`)로 컴파일 시 생성. About·툴팁·창 제목은 점검 결과 이상 없음. → [journal/2026-10-12](journal/2026-10-12.md)

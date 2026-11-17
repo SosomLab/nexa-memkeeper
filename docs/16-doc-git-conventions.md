@@ -100,7 +100,8 @@ release: 0.1.0 승격(첫 공개 빌드) — GitHub Release 전용
 - 병합·green 확인 후 **로컬 브랜치 삭제**, 이력은 `BRANCHES.md` 표 + journal에 보존.
 - 🔴 **push는 사용자가 명시적으로 요청할 때만.** 자동 push 금지.
 - 🔴 **버전 태그 push는 별도 승인.** 태그 = 공개 릴리스 생성 행위이므로 main push와 분리해 다시 확인.
-- 🔴 **파괴적 작업**(파일·브랜치 삭제, reset/revert, force push, 덮어쓰기)은 실행 전 확인.
+- 🔴 **파괴적 작업**은 실행 전 확인 — 대상은 [22 §7](22-session-and-automation-rules.md) "먼저 묻는다" 목록(push·태그·제출 워크플로, `reset --hard`·`clean`·강제 push·`branch -D`·이력 재작성, 프로젝트 밖 사용자 리소스 수정·삭제 등).
+- 🟢 **프로젝트 내부 파일(git으로 되돌릴 수 있는 것)과 세션이 만든 산출물(`target/`·임시 파일)의 수정·삭제는 묻지 않는다**([22 §7](22-session-and-automation-rules.md) "묻지 않고 진행").
 - 🟢 그 외 일상 작업은 **사용자 개입 최소화로 자동 진행**. 상태 기록 md 갱신은 묻지 않고 진행.
 - 🔴 권한 설정(`.claude/settings.json`)은 **덮어쓰기 금지, 병합만** — 세션 승인 항목 유실 방지.
 

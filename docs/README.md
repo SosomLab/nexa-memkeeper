@@ -13,7 +13,7 @@
 4. **어떻게 짓나** — [02 로드맵](02-roadmap.md)(M0~M5) → ADR 06·07·08
 5. **지금 상태** — [STATUS](STATUS.md) → [MILESTONES](MILESTONES.md)
 6. **진행 경과** — [DEVLOG](DEVLOG.md)(시간 역순) → 관심 날짜 [journal/](journal/)
-7. **규약** — [16 문서·커밋/푸시 규약](16-doc-git-conventions.md) → [15 방법론](15-dev-methodology.md) → [18 빌드&테스트](18-build-and-test.md)
+7. **규약** — [16 문서·커밋/푸시 규약](16-doc-git-conventions.md) → [22 세션 분담 & 자동화](22-session-and-automation-rules.md) → [15 방법론](15-dev-methodology.md) → [18 빌드&테스트](18-build-and-test.md)
 
 ## ① 시발점 · 정체성
 
@@ -21,7 +21,7 @@
 |---|---|
 | [00 비전](00-vision.md) | ★ 목적(사용자 확정 08-07)·설계 원칙 5·예산 제안(RSS ≤5MB·exe ≤3MB) |
 | [05 요구사항](05-requirements.md) | ★ FR-1~6 / NFR-1~5 / 설정 스펙·추천 기본값 / 보호 프로세스 목록 |
-| [10 결정 기록](10-decision-record.md) | ★ DR-1~8(라이선스·규약·목적·우선순위·스택·기법·구조·예산) + ADR 색인·crate 원장 |
+| [10 결정 기록](10-decision-record.md) | ★ DR-1~16(라이선스·규약·목적·우선순위·스택·기법·구조·예산) + ADR 색인·crate 원장 |
 | [CLAUDE.md](../CLAUDE.md) | 이식용 프로젝트 메모리 |
 
 ## ② 주요 목표 · 설계
@@ -55,6 +55,8 @@
 | [16 문서·커밋/푸시 규약](16-doc-git-conventions.md) | ★ 문서 4층 체계·커밋/브랜치/푸시 규칙 — **타 프로젝트 이식용 지시문 포함** |
 | [15 개발 방법론](15-dev-methodology.md) | 수직 슬라이스·commit scope 규약·크레이트 구조·안전 규율 |
 | [18 빌드 & 테스트](18-build-and-test.md) | ★ 빌드·테스트·예산 실측 절차(SSOT) |
+| [22 세션 분담 & 자동화 개발 규칙](22-session-and-automation-rules.md) | ★ 개발(Fable)·협업(Opus) 세션 분담·파일 소유·SEM, 자동·고지·질문 3단 경계(SSOT) |
+| [claude-global-rules.md](claude-global-rules.md) | 전역 규칙(`~/.claude/CLAUDE.md`) 이식용 사본 — 설치·일치 판정 `scripts/install-global-rules.sh` |
 
 ---
 
