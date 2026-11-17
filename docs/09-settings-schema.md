@@ -4,7 +4,8 @@
 > 구 키(`poll_secs`·`cooldown_secs`·`interval_mins`)는 읽을 때 자동 환산되고 저장 시 새 키로 대체된다(1회 마이그레이션).
 >
 > **구현 상태(08-07, M4)**: 파싱·검증(mk-core `settings.rs`)·파일 I/O(mk-app `config.rs`)·설정 창 완료.
-> **08-08**: `[watch]`(X-1)·`[auto] suppress_fullscreen`(X-2)까지 구현 완료. 미구현: `[exclude]`. UI에 없는 키도 파일에 쓰면 보존되며, 구현 시 그대로 살아난다.
+> **08-08**: `[watch]`(X-1)·`[auto] suppress_fullscreen`(X-2)까지 구현 완료. 미구현: `[exclude]`.
+> **11-18**: `[general] start_delay_ms`(X-5, `b28ebc2`) 구현 · `lang` 저장 누락 수정(`f89c94e`). UI에 없는 키도 파일에 쓰면 보존되며, 구현 시 그대로 살아난다.
 
 > [05 §4](05-requirements.md) 설정 스펙의 구현 상세: 키 이름·형·기본값·범위·UI 배치·적용 시점.
 > 저장 위치: exe 옆 `data\settings.ini`(포터블), 쓰기 불가 시 `%LOCALAPPDATA%\NexaMemKeeper\`(FR-5).
@@ -21,8 +22,8 @@
 | `danger_percent` | u32 | `90` | warn 초과~99 | 〃 |
 | `notify` | bool | `true` | 정리 완료 토스트(회수량 MB) | 트레이 토글 + 설정 창 |
 | `hotkey_clean` | str | `""`(off) | 예 `Ctrl+Alt+M` — 수정자 필수. 설정 창에서 **조합을 직접 눌러** 지정(M4-2 구현) | 설정 창·일반 |
-| `lang` | enum | **`en`** | `en`(기본) \| `ko` \| `auto`(OS 언어) — 설정 창 콤보. 변경은 재시작 후 적용(DR-13) | 〃 |
-| `start_delay_secs` | u32 | `0` | 0~120 — 자동 시작 시 부팅 경쟁 회피(후보 X-5, 설치형 기본 30 권장) | 〃 |
+| `lang` | enum | **`en`** | `en`(기본) \| `ko` \| `auto`(OS 언어) — 설정 창 콤보. 변경은 재시작 후 적용(DR-13). 11-18 저장 누락 수정(`f89c94e` — 그전엔 저장할 때마다 이 줄이 지워졌다) | 〃 |
+| `start_delay_ms` | u32 | `30000` | 0~120000, 0=끔 — 시작 후 이 시간 동안 **자동 정리·워치리스트 트림만 보류**(트레이·수동 정리·핫키는 즉시)(X-5, 11-18). 실행 경로와 무관하게 **매 시작마다** 적용. 구 후보 키 `start_delay_secs`는 읽을 때 ms로 환산 | 설정 창·일반 |
 
 ## 2. `[auto]` — 자동 정리 (FR-4 트리거)
 
