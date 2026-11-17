@@ -174,6 +174,10 @@ const KO: &[(&str, &str)] = &[
         "Could not change the setting.",
         "설정을 변경하지 못했습니다.",
     ),
+    (
+        "Development builds cannot be registered to run at startup.\nUse the installed or portable app.",
+        "개발 빌드는 자동 실행에 등록할 수 없습니다.\n설치본이나 포터블 패키지에서 켜 주세요.",
+    ),
     ("About Nexa MemKeeper", "Nexa MemKeeper 정보"),
     (
         "Ultra-light tray-resident memory optimizer",

@@ -14,3 +14,8 @@ Install-ChocolateyZipPackage `
   -Checksum64 '{{CHECKSUM64}}' `
   -ChecksumType64 'sha256' `
   -UnzipLocation $toolsDir
+
+# choco는 tools 아래 exe마다 실행용 shim을 만든다. '<exe>.gui' 표시 파일이 있으면 shim이
+# 이 프로그램을 GUI 앱으로 다뤄 콘솔 창을 붙잡지 않고 곧바로 돌아간다(C-3).
+# exe가 ZIP에서 풀리므로 패키지에 넣지 않고 설치 시점에 만든다.
+New-Item -ItemType File -Path (Join-Path $toolsDir 'NexaMemKeeper.exe.gui') -Force | Out-Null

@@ -421,13 +421,34 @@ unsafe fn watch_trim_if_due() {
     WATCH_LAST.with(|m| m.borrow_mut().retain(|pid, _| alive.contains(pid)));
 }
 
+/// 워커 실행 명령 — 자기 exe + `--worker <args>`. 워커를 띄우는 곳은 전부 이 함수를 거친다.
+///
+/// **디버그 빌드 한정 방어(C-1)**: 디버그 exe는 콘솔 서브시스템이라(main.rs), 콘솔이 없는 부모
+/// (탐색기·자동 실행)에서 워커를 띄우면 그때마다 까만 콘솔 창이 뜬다. 부모에 콘솔이 **없을 때만**
+/// `CREATE_NO_WINDOW`를 준다 — 터미널에서 띄운 경우에는 주지 않아 워커의 stderr 진단
+/// (docs/18 §4-1)이 그대로 보인다. 릴리스 워커는 GUI 서브시스템이라 콘솔이 생기지 않으므로
+/// 이 분기를 아예 컴파일하지 않는다(릴리스 바이너리 무변경).
+fn worker_cmd(args: &[&str]) -> Option<std::process::Command> {
+    let exe = std::env::current_exe().ok()?;
+    let mut cmd = std::process::Command::new(exe);
+    cmd.arg("--worker").args(args);
+    #[cfg(debug_assertions)]
+    {
+        use std::os::windows::process::CommandExt;
+        use windows::Win32::System::Console::GetConsoleWindow;
+        use windows::Win32::System::Threading::CREATE_NO_WINDOW;
+        if unsafe { GetConsoleWindow() }.is_invalid() {
+            cmd.creation_flags(CREATE_NO_WINDOW.0);
+        }
+    }
+    Some(cmd)
+}
+
 /// 프로세스 1개 트림 — 상태 변경은 워커가 한다(DR-7). 결과는 알리지 않는다(조용한 표적 트림).
 fn spawn_trim(pid: u32) {
     std::thread::spawn(move || {
-        if let Ok(exe) = std::env::current_exe() {
-            let _ = std::process::Command::new(exe)
-                .args(["--worker", "trim", &pid.to_string()])
-                .status();
+        if let Some(mut cmd) = worker_cmd(&["trim", &pid.to_string()]) {
+            let _ = cmd.status();
         }
     });
 }
@@ -515,10 +536,8 @@ pub(crate) fn open_settings() {
             }
         }
     }
-    if let Ok(exe) = std::env::current_exe() {
-        let _ = std::process::Command::new(exe)
-            .args(["--worker", "settings"])
-            .spawn();
+    if let Some(mut cmd) = worker_cmd(&["settings"]) {
+        let _ = cmd.spawn();
     }
 }
 
@@ -538,11 +557,9 @@ pub(crate) fn open_list() {
             }
         }
     }
-    if let Ok(exe) = std::env::current_exe() {
+    if let Some(mut cmd) = worker_cmd(&["list"]) {
         // 창이 살아 있는 동안 워커가 상주하므로 대기하지 않는다(spawn 후 분리).
-        let _ = std::process::Command::new(exe)
-            .args(["--worker", "list"])
-            .spawn();
+        let _ = cmd.spawn();
     }
 }
 
@@ -550,14 +567,8 @@ pub(crate) fn open_list() {
 pub(crate) fn request_worker(hwnd: HWND, action: &'static str, pid: u32) {
     let hwnd_raw = hwnd.0 as usize;
     std::thread::spawn(move || {
-        let ok = std::env::current_exe()
-            .ok()
-            .and_then(|exe| {
-                std::process::Command::new(exe)
-                    .args(["--worker", action, &pid.to_string()])
-                    .status()
-                    .ok()
-            })
+        let ok = worker_cmd(&[action, &pid.to_string()])
+            .and_then(|mut cmd| cmd.status().ok())
             .map(|s| s.success())
             .unwrap_or(false);
         unsafe {
@@ -586,14 +597,8 @@ fn spawn_clean_as(hwnd: HWND, trigger: &'static str) {
     CLEAN_BUSY.set(true);
     let hwnd_raw = hwnd.0 as usize;
     std::thread::spawn(move || {
-        let code = std::env::current_exe()
-            .ok()
-            .and_then(|exe| {
-                std::process::Command::new(exe)
-                    .args(["--worker", "clean"])
-                    .status()
-                    .ok()
-            })
+        let code = worker_cmd(&["clean"])
+            .and_then(|mut cmd| cmd.status().ok())
             .and_then(|s| s.code())
             .map(|c| c as u32)
             .unwrap_or(mk_core::WORKER_ERR);

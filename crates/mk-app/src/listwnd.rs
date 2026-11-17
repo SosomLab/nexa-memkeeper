@@ -778,8 +778,15 @@ unsafe fn on_command(hwnd: HWND, id: usize) {
         }
         ID_AUTORUN => {
             let now = autorun_enabled();
-            let ok = set_autorun(!now);
-            if !ok {
+            if !now && is_dev_exe() {
+                // 개발 빌드 경로가 Run 키에 남으면 로그온 때 콘솔 창이 뜨거나(디버그) 낡은
+                // 바이너리가 상주한다 — 켜는 것만 막고, 끄는 것은 언제나 허용한다(C-2).
+                info_box(
+                    hwnd,
+                    tr("Autorun"),
+                    tr("Development builds cannot be registered to run at startup.\nUse the installed or portable app."),
+                );
+            } else if !set_autorun(!now) {
                 info_box(hwnd, tr("Autorun"), tr("Could not change the setting."));
             }
             with_state(|st| {
@@ -1958,8 +1965,35 @@ pub fn autorun_enabled() -> bool {
     }
 }
 
-/// 자동 실행 등록/해제. 실패 시 false.
+/// 지금 실행 중인 exe가 **개발 빌드**인가 — 디버그 빌드이거나 cargo 산출 폴더
+/// (`…\target\release\` · `…\target\debug\`) 바로 아래에 있는 경우.
+///
+/// 이런 경로를 자동 실행에 등록하면 안 된다(C-2): 디버그 exe는 콘솔 서브시스템이라 로그온 때
+/// 까만 창이 뜨고, 릴리스 산출물이라도 다시 빌드하기 전의 낡은 바이너리가 상주하게 된다.
+/// 폴더 이름 하나("target")만 보지 않고 **부모·조부모 두 단계**를 함께 본다 — 사용자가 우연히
+/// `target`이라는 폴더에 포터블을 풀어 둔 경우를 막지 않기 위해서다.
+fn is_dev_exe() -> bool {
+    if cfg!(debug_assertions) {
+        return true;
+    }
+    let Ok(exe) = std::env::current_exe() else {
+        return false;
+    };
+    let name_of = |p: Option<&std::path::Path>| {
+        p.and_then(|d| d.file_name())
+            .map(|n| n.to_string_lossy().to_ascii_lowercase())
+    };
+    let parent = exe.parent();
+    let profile = name_of(parent);
+    let root = name_of(parent.and_then(|d| d.parent()));
+    matches!(profile.as_deref(), Some("release" | "debug")) && root.as_deref() == Some("target")
+}
+
+/// 자동 실행 등록/해제. 실패 시 false. 개발 빌드는 등록을 거부한다([`is_dev_exe`]).
 pub fn set_autorun(enable: bool) -> bool {
+    if enable && is_dev_exe() {
+        return false;
+    }
     unsafe {
         let mut key = HKEY::default();
         if RegOpenKeyExW(
