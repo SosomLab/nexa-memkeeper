@@ -68,7 +68,7 @@ pub fn load() -> Settings {
     s
 }
 
-/// 설정 문자열 → UI 언어. `auto`(기본)면 **OS UI 언어**를 따르되 한국어가 아니면 영어.
+/// 설정 문자열 → UI 언어(기본 `en`). `auto`면 **OS UI 언어**를 따르되 한국어가 아니면 영어.
 fn apply_lang(setting: &str) {
     let lang = mk_core::lang_from_setting(setting).unwrap_or_else(|| {
         // 0x0412 = ko-KR. 하위 워드의 기본 언어 ID만 본다.

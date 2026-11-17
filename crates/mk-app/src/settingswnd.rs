@@ -321,7 +321,7 @@ const CB_GETCURSEL: u32 = 0x0147;
 /// 콤보 항목 순서 = 설정 값(auto/en/ko).
 const LANGS: [&str; 3] = ["auto", "en", "ko"];
 
-/// 언어 선택 콤보(i18n) — 기본은 `auto`(OS 언어, 한국어가 아니면 영어).
+/// 언어 선택 콤보(i18n) — 기본은 `en`(mk-core `Settings::default`). `auto`는 OS 언어(한국어가 아니면 영어).
 unsafe fn lang_combo(parent: HWND, id: i32, x: i32, y: i32, w: i32, font: HFONT) {
     let Ok(h) = CreateWindowExW(
         WINDOW_EX_STYLE(0),
@@ -652,7 +652,7 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
         font,
     );
     hotkey_field(hwnd, ID_HOTKEY, x + NUM_X, 557, 140, font);
-    // 언어(i18n) — 기본 auto(OS 언어). 바꾸면 재시작 안내를 띄운다.
+    // 언어(i18n) — 기본 en, auto = OS 언어. 바꾸면 재시작 안내를 띄운다.
     label(hwnd, tw!("Language"), x + 14, 586, LBL_W, font);
     lang_combo(hwnd, ID_LANG, x + NUM_X, 583, 140, font);
 

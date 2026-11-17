@@ -102,9 +102,66 @@ thread_local! {
 /// 전역 핫키 ID(이 창에서 유일하면 된다).
 const HOTKEY_ID: i32 = 1;
 
+/// 단일 인스턴스 표식(S-1) — 로그온 세션마다 하나(`Local\`). 설치본·포터블·개발 빌드가
+/// 같은 이름을 쓴다: 경로가 달라도 트레이 아이콘과 자동 정리가 둘씩 도는 것은 같은 문제다.
+const INSTANCE_MUTEX: PCWSTR = w!("Local\\NexaMemKeeper.Shell");
+/// "관리자 권한으로 재시작"이 새 인스턴스에 붙이는 인자 — 이전 인스턴스가 물러날 때까지 기다린다.
+const ARG_RESTART: &str = "--restart";
+
+/// 이 프로세스가 유일한 셸이 되면 true(표식 핸들은 프로세스가 끝날 때까지 쥔다).
+///
+/// 이미 다른 셸이 있으면 false. `wait_prev`면 이전 인스턴스가 끝나기를 최대 5초 기다린다
+/// (승격 재시작 — 새 인스턴스가 먼저 뜨고 이전 인스턴스가 그 뒤에 창을 닫는다).
+/// 표식을 **만들 수 없는 다른 이유**로 실패하면 true를 돌려준다 — 방어 장치가 고장 났다고
+/// 프로그램이 아예 뜨지 않는 것보다는 중복 실행을 허용하는 쪽이 낫다.
+unsafe fn claim_single_instance(wait_prev: bool) -> bool {
+    use windows::Win32::Foundation::{
+        CloseHandle, GetLastError, ERROR_ACCESS_DENIED, ERROR_ALREADY_EXISTS,
+    };
+    use windows::Win32::System::Threading::CreateMutexW;
+    let tries = if wait_prev { 50 } else { 1 };
+    for i in 0..tries {
+        match CreateMutexW(None, false, INSTANCE_MUTEX) {
+            Ok(h) => {
+                if GetLastError() != ERROR_ALREADY_EXISTS {
+                    return true; // 새로 만들었다 — 닫지 않고 둔다
+                }
+                // 남의 표식을 연 것 — 쥐고 있으면 이전 인스턴스가 끝나도 표식이 남는다
+                let _ = CloseHandle(h);
+            }
+            // 권한 수준이 다른(승격된) 인스턴스의 표식은 열지 못한다 = 이미 있다
+            Err(e) if e.code() == ERROR_ACCESS_DENIED.to_hresult() => {}
+            Err(_) => return true,
+        }
+        if i + 1 < tries {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+    false
+}
+
 /// 상주 셸 진입 — 숨김 호스트 창 생성 후 메시지 루프(종료 메뉴 선택까지 블록).
 pub fn run() -> windows::core::Result<()> {
     unsafe {
+        // 중복 실행 방어(S-1) — 두 번째 실행은 조용히 끝내고, 이미 떠 있는 셸의 팝업을 연다
+        // (사용자는 "실행했는데 아무 일도 없다"가 아니라 프로그램이 응답하는 것을 본다).
+        let restarting = std::env::args().any(|a| a == ARG_RESTART);
+        if !claim_single_instance(restarting) {
+            if !restarting {
+                if let Ok(h) = FindWindowW(CLASS, None) {
+                    if !h.is_invalid() {
+                        // 승격된 셸에는 UIPI 때문에 전달되지 않을 수 있다 — 그때는 조용히 끝난다
+                        let _ = PostMessageW(
+                            Some(h),
+                            WM_TRAY,
+                            WPARAM(0),
+                            LPARAM(WM_LBUTTONUP as isize),
+                        );
+                    }
+                }
+            }
+            return Ok(());
+        }
         let hinst = GetModuleHandleW(None)?;
         let wc = WNDCLASSW {
             lpszClassName: CLASS,
@@ -667,11 +724,12 @@ unsafe fn restart_elevated(hwnd: HWND) {
     };
     let mut wide: Vec<u16> = exe.to_string_lossy().encode_utf16().collect();
     wide.push(0);
+    // `--restart`: 새 인스턴스가 단일 인스턴스 검사(S-1)에서 이 인스턴스의 종료를 기다리게 한다
     let inst = ShellExecuteW(
         None,
         w!("runas"),
         PCWSTR(wide.as_ptr()),
-        None,
+        w!("--restart"),
         None,
         SW_SHOWNORMAL,
     );
