@@ -55,6 +55,10 @@ pub struct Settings {
     pub hotkey_clean: String,
     /// UI 언어 — `en`(**기본**) / `ko` / `auto`(OS 언어 따름). 적용은 mk-app config.rs.
     pub lang: String,
+    /// **시작 후 자동 작업 보류**(X-5, ms). 0 = 끔. 셸이 뜬 뒤 이 시간 동안은 자동 정리와
+    /// 워치리스트 트림을 돌리지 않는다 — 부팅 직후 다른 프로그램이 로딩 중일 때 정리가
+    /// 끼어드는 것을 피한다. 트레이 표시·수동 정리·핫키는 즉시 동작한다.
+    pub start_delay_ms: u32,
     // [auto]
     pub auto_enabled: bool,
     pub threshold_percent: u32,
@@ -106,6 +110,7 @@ impl Default for Settings {
             notify: true,
             hotkey_clean: String::new(),
             lang: "en".to_string(),
+            start_delay_ms: 30_000,
             auto_enabled: true,
             threshold_percent: 90,
             cooldown_ms: 300_000,
@@ -202,6 +207,15 @@ impl Settings {
             ("general", "notify") => self.notify = parse_bool(value).unwrap_or(self.notify),
             ("general", "hotkey_clean") => self.hotkey_clean = value.to_string(),
             ("general", "lang") => self.lang = value.to_string(),
+            ("general", "start_delay_ms") => {
+                self.start_delay_ms = num.unwrap_or(self.start_delay_ms)
+            }
+            // docs/09가 후보로 적어 두었던 초 단위 키 — 손으로 넣은 파일이 있으면 ms로 환산한다
+            ("general", "start_delay_secs") => {
+                self.start_delay_ms = num
+                    .map(|v| v.saturating_mul(1_000))
+                    .unwrap_or(self.start_delay_ms)
+            }
             ("auto", "enabled") => {
                 self.auto_enabled = parse_bool(value).unwrap_or(self.auto_enabled)
             }
@@ -283,6 +297,12 @@ impl Settings {
         true
     }
 
+    /// 지금이 **시작 후 보류 구간**인가(X-5) — 셸이 뜬 뒤 `since_start_ms`가 지났을 때.
+    /// 참이면 자동 정리·워치리스트 트림을 건너뛴다. 0으로 두면 항상 거짓(보류 없음).
+    pub fn in_startup_hold(&self, since_start_ms: u64) -> bool {
+        since_start_ms < u64::from(self.start_delay_ms)
+    }
+
     /// 범위 클램프 + 모순 해소(docs/09 §7-2).
     pub fn normalize(&mut self) {
         self.poll_ms = clamp(self.poll_ms, 2_000, 30_000);
@@ -294,6 +314,8 @@ impl Settings {
             self.warn_percent = d.warn_percent;
             self.danger_percent = d.danger_percent;
         }
+        // 0 = 끔이라 하한이 없다. 상한 2분 — 그보다 길면 "자동 정리가 안 돈다"로 보인다.
+        self.start_delay_ms = self.start_delay_ms.min(120_000);
         self.threshold_percent = clamp(self.threshold_percent, 50, 95);
         self.cooldown_ms = clamp(self.cooldown_ms, 60_000, 1_800_000);
         if self.interval_ms != 0 {
@@ -338,6 +360,7 @@ impl Settings {
         // 빠뜨리면 설정 창에서 저장할 때마다 언어가 기본값으로 되돌아간다(11-18 — `apply`는
         // `lang`을 아는 키로 읽으므로 "모르는 키 보존"으로도 살아남지 못한다).
         out.push_str(&format!("lang = {}\n", self.lang));
+        out.push_str(&format!("start_delay_ms = {}\n", self.start_delay_ms));
         self.push_unknown(&mut out, "general");
 
         out.push_str("\n[auto]\n");
@@ -543,6 +566,39 @@ view_flat = false
         };
         let back = Settings::parse(&s.to_ini());
         assert_eq!(back, s);
+    }
+
+    #[test]
+    fn start_delay_defaults_clamps_and_migrates() {
+        // 기본 30초(사용자 결정 11-18 — 설치형·포터블 공통)
+        assert_eq!(Settings::default().start_delay_ms, 30_000);
+        // 0 = 끔은 그대로, 상한 2분
+        assert_eq!(
+            Settings::parse("[general]\nstart_delay_ms = 0\n").start_delay_ms,
+            0
+        );
+        assert_eq!(
+            Settings::parse("[general]\nstart_delay_ms = 999999\n").start_delay_ms,
+            120_000
+        );
+        // 후보였던 초 단위 키 — 환산해 읽고 저장 시엔 ms 키로만 남긴다
+        let s = Settings::parse("[general]\nstart_delay_secs = 45\n");
+        assert_eq!(s.start_delay_ms, 45_000);
+        let out = s.to_ini();
+        assert!(out.contains("start_delay_ms = 45000"), "{out}");
+        assert!(!out.contains("start_delay_secs"));
+        assert_eq!(Settings::parse(&out), s);
+    }
+
+    #[test]
+    fn startup_hold_covers_only_the_delay_window() {
+        let mut s = Settings::default();
+        assert!(s.in_startup_hold(0));
+        assert!(s.in_startup_hold(29_999));
+        assert!(!s.in_startup_hold(30_000), "경계에서 풀려야 한다");
+        assert!(!s.in_startup_hold(u64::MAX));
+        s.start_delay_ms = 0;
+        assert!(!s.in_startup_hold(0), "0 = 보류 없음");
     }
 
     #[test]

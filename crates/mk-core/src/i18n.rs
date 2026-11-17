@@ -295,6 +295,10 @@ const KO: &[(&str, &str)] = &[
     ),
     ("List refresh (ms, 500~10000)", "목록 갱신 (ms, 500~10000)"),
     ("Top N (3~10)", "Top N (3~10)"),
+    (
+        "Startup delay (ms, 0~120000)",
+        "시작 후 자동 정리 보류 (ms, 0~120000)",
+    ),
     ("Notify on cleanup", "정리 결과 알림"),
     ("Hide pseudo processes", "의사 프로세스 숨김"),
     (

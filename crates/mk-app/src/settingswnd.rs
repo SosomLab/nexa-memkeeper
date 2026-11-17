@@ -29,9 +29,9 @@ const CLASS: PCWSTR = w!("NexaMemKeeperSettings");
 /// **클라이언트 영역** 크기(모든 레이아웃 좌표의 기준). 창 크기는 여기에 테두리·제목 표시줄을
 /// 더해 [`AdjustWindowRect`]로 역산한다 — 이 값을 그대로 창 크기로 넘기면 아래쪽이 잘린다(08-07 QA).
 const W: i32 = 452;
-const H: i32 = 672;
+const H: i32 = 678;
 /// 하단 버튼 줄 y좌표(콘텐츠 마지막 + 여백).
-const BTN_Y: i32 = 620;
+const BTN_Y: i32 = 626;
 
 // 컨트롤 ID
 const ID_AUTO_ENABLED: i32 = 1001;
@@ -53,6 +53,7 @@ const ID_REFRESH_MS: i32 = 1024;
 const ID_TOPN: i32 = 1025;
 const ID_HOTKEY: i32 = 1026;
 const ID_LANG: i32 = 1027;
+const ID_START_DELAY: i32 = 1028;
 const ID_SAVE: i32 = 1030;
 const ID_CANCEL: i32 = 1031;
 const ID_RESET: i32 = 1032;
@@ -592,7 +593,7 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
     );
 
     // ── 일반
-    group(hwnd, tw!("General"), x, 406, gw, 202, font);
+    group(hwnd, tw!("General"), x, 406, gw, 208, font);
     label(
         hwnd,
         tw!("Poll interval (ms, 2000~30000)"),
@@ -613,12 +614,22 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
     number(hwnd, ID_REFRESH_MS, x + NUM_X, 453, NUM_W, font);
     label(hwnd, w!("Top N (3~10)"), x + 14, 482, LBL_W, font);
     number(hwnd, ID_TOPN, x + NUM_X, 479, NUM_W, font);
+    // 시작 후 자동 작업 보류(X-5) — 부팅 직후 자동 정리·워치리스트 트림을 쉬는 시간. 0 = 끔.
+    label(
+        hwnd,
+        tw!("Startup delay (ms, 0~120000)"),
+        x + 14,
+        508,
+        LBL_W,
+        font,
+    );
+    number(hwnd, ID_START_DELAY, x + NUM_X, 505, NUM_W, font);
     checkbox(
         hwnd,
         tw!("Notify on cleanup"),
         ID_NOTIFY,
         x + 14,
-        506,
+        534,
         190,
         font,
     );
@@ -627,7 +638,7 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
         tw!("Hide pseudo processes"),
         ID_HIDE_PSEUDO,
         x + 210,
-        506,
+        534,
         200,
         font,
     );
@@ -636,14 +647,14 @@ unsafe fn build_ui(hwnd: HWND, font: HFONT) {
         hwnd,
         tw!("Global hotkey (Clean Now)"),
         x + 14,
-        554,
+        560,
         LBL_W,
         font,
     );
-    hotkey_field(hwnd, ID_HOTKEY, x + NUM_X, 551, 140, font);
+    hotkey_field(hwnd, ID_HOTKEY, x + NUM_X, 557, 140, font);
     // 언어(i18n) — 기본 auto(OS 언어). 바꾸면 재시작 안내를 띄운다.
-    label(hwnd, tw!("Language"), x + 14, 580, LBL_W, font);
-    lang_combo(hwnd, ID_LANG, x + NUM_X, 577, 140, font);
+    label(hwnd, tw!("Language"), x + 14, 586, LBL_W, font);
+    lang_combo(hwnd, ID_LANG, x + NUM_X, 583, 140, font);
 
     // ── 버튼
     button(
@@ -685,6 +696,7 @@ unsafe fn load_into_ui(hwnd: HWND, s: &Settings) {
     let _ = SetDlgItemInt(hwnd, ID_POLL, s.poll_ms, false);
     let _ = SetDlgItemInt(hwnd, ID_REFRESH_MS, s.list_refresh_ms, false);
     let _ = SetDlgItemInt(hwnd, ID_TOPN, s.topn, false);
+    let _ = SetDlgItemInt(hwnd, ID_START_DELAY, s.start_delay_ms, false);
     set_check(hwnd, ID_NOTIFY, s.notify);
     set_check(hwnd, ID_HIDE_PSEUDO, s.hide_pseudo);
     set_hotkey(hwnd, ID_HOTKEY, &s.hotkey_clean);
@@ -710,6 +722,7 @@ unsafe fn save_from_ui(hwnd: HWND) -> bool {
     s.poll_ms = GetDlgItemInt(hwnd, ID_POLL, None, false);
     s.list_refresh_ms = GetDlgItemInt(hwnd, ID_REFRESH_MS, None, false);
     s.topn = GetDlgItemInt(hwnd, ID_TOPN, None, false);
+    s.start_delay_ms = GetDlgItemInt(hwnd, ID_START_DELAY, None, false);
     s.notify = get_check(hwnd, ID_NOTIFY);
     s.hide_pseudo = get_check(hwnd, ID_HIDE_PSEUDO);
     s.hotkey_clean = get_hotkey(hwnd, ID_HOTKEY);

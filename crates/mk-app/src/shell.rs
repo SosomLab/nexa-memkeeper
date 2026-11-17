@@ -94,6 +94,9 @@ thread_local! {
     /// 대기 스레드를 쓰지 않는 이유: 스레드 하나가 유휴 예산(DR-8)을 갉아먹고, 이미 도는
     /// 폴링 타이머에 질의 1콜을 얹는 편이 싸다(질의는 커널 플래그 읽기 수준).
     static LOWMEM: Cell<Option<HANDLE>> = const { Cell::new(None) };
+    /// 셸이 뜬 시각(X-5) — 이후 `start_delay_ms` 동안 자동 정리·워치리스트 트림을 보류한다.
+    /// 타이머·스레드를 늘리지 않고 기존 폴링 틱에서 경과 시간만 비교한다(DR-8).
+    static STARTED: Cell<Option<Instant>> = const { Cell::new(None) };
 }
 
 /// 전역 핫키 ID(이 창에서 유일하면 된다).
@@ -138,6 +141,7 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
     match msg {
         WM_CREATE => {
             TASKBAR_MSG.set(RegisterWindowMessageW(w!("TaskbarCreated")));
+            STARTED.set(Some(Instant::now()));
             apply_settings(hwnd); // settings.ini 로드 + 폴링 주기 반영
             tray_add(hwnd);
             self_trim();
@@ -149,8 +153,12 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
             } else {
                 tray_update(hwnd);
                 trim_if_over_budget(); // 예산을 넘으면 스스로 반납(NFR-3·DR-8)
-                watch_trim_if_due(); // 워치리스트 표적 트림(X-1 — 꺼져 있으면 즉시 반환)
-                auto_clean_if_due(hwnd);
+                                       // 시작 직후에는 자동 작업을 쉰다(X-5) — 부팅 중 다른 앱의 로딩과 겹치지 않게.
+                                       // 트레이 갱신과 자기 트림은 위에서 이미 돌았고, 수동 정리·핫키는 이 경로가 아니다.
+                if !startup_hold() {
+                    watch_trim_if_due(); // 워치리스트 표적 트림(X-1 — 꺼져 있으면 즉시 반환)
+                    auto_clean_if_due(hwnd);
+                }
             }
             LRESULT(0)
         }
@@ -384,6 +392,16 @@ unsafe fn trim_if_over_budget() {
     {
         self_trim();
     }
+}
+
+/// 시작 후 보류 구간인가(X-5). 판정은 mk-core, 여기서는 경과 시간만 잰다.
+/// 설정 창에서 값을 바꾸면 다음 틱부터 새 값으로 판정된다(시작 시각은 다시 잡지 않는다).
+fn startup_hold() -> bool {
+    let Some(at) = STARTED.get() else {
+        return false;
+    };
+    let since = at.elapsed().as_millis() as u64;
+    SETTINGS.with(|c| c.borrow().in_startup_hold(since))
 }
 
 /// 유휴 워킹셋 예산(DR-8) — 이 값을 넘으면 스스로 반납한다.
