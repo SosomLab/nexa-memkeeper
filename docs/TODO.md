@@ -3,7 +3,7 @@
 > 목표순. ID·우선(P0~P2)·규모(소/중/대)·의존·상태. 완료 항목은 상태만 바꾸고 지우지 않는다.
 >
 > **남은 일(11-18 기준)**
-> - 개발(사용자 확정 순서): ~~C-1~C-3 → L-1 → X-5~~ ✅ 11-18(`fix/console-guard`) → ~~S-1 · L-2~~ ✅ 11-18(`fix/single-instance`, 병합 전). 남은 것: DR-17 사용자 확인 · 사용자 QA(설정 창 입력란·안내 문구·트레이 머리줄·`--restart`)
+> - 개발(사용자 확정 순서): ~~C-1~C-3 → L-1 → X-5~~ ✅ 11-18(`fix/console-guard`) → ~~S-1 · L-2~~ ✅ 11-18(main `7d8c64d`, push 11-18). DR-17 사용자 확정 11-18. 남은 것: 사용자 QA(설정 창 입력란·안내 문구·트레이 머리줄·`--restart`)
 > - 사용자: **M5-3**(설치 왕복 QA, P0 — choco 0.7.1이 승인돼 `choco install/uninstall`로 제거 수정도 함께 확인 가능) · **M3-3**(앱 홈페이지 URL 확정 시 한 줄) · 트레이 머리줄 버전 육안 확인
 > - 대기: 없음 — **0.7.1** 전 채널 게시 완료(choco 2건 09-29 Approved · winget [#443189](https://github.com/microsoft/winget-pkgs/pull/443189)·[#443190](https://github.com/microsoft/winget-pkgs/pull/443190) 09-29 MERGED)
 > - 코드 후보(사용자 선택 대기): X-1 설정 UI · X-4(배터리) · X-6(트레이 표시 모드)
@@ -50,5 +50,5 @@
 | L-1 | **언어 설정 저장 누락 수정** — `to_ini`에 `lang` 출력 + 시험 `lang_survives_roundtrip`(결함 판정 [journal](journal/2026-11-18.md) 9차) · 개발 | P1 | 소 | C-1~C-3 | ✅ 11-18 `f89c94e` |
 | L-2 | **기본 언어 주석 정리** — 주석이 `auto`(`settingswnd.rs:321·323`, `config.rs:71`)와 `en`(`settings.rs:56·108`, [09](09-settings-schema.md))으로 갈림 → `en`으로 통일 · 개발 | P2 | 소 | — | ✅ 11-18 `32eb2d5`(주석 3줄) |
 | X-5 | **부팅 후 지연 시작** — 로그온 직후 부하 회피([05 §5](05-requirements.md)). 사용자 결정(11-18): 트레이는 즉시, **자동 정리·워치리스트 트림만 보류** · 매 시작마다 · 기본 30초 · 설정 창 '일반'에 입력란 · 키 `[general] start_delay_ms`(09 후보 `start_delay_secs`를 ms로 통일, 09·05는 구현 커밋 때 갱신) · 개발 | P2 | 중 | L-1 | ✅ 11-18 `b28ebc2`(V1 60 green · V2 exe 0.677MB · 유휴 WS 1.43MB) |
-| S-1 | **중복 실행 방어(단일 인스턴스)** — 뮤텍스 `Local\NexaMemKeeper.Shell`, 두 번째 실행은 기존 팝업을 열고 종료, 승격 재시작 `--restart` 5초 대기([DR-17](10-decision-record.md), 사용자 확인 대기). V1 60 green · exe 0.678MB · 유휴 WS 1.41MB · 시험: 두 번째 실행 3초 내 종료(코드 0)·팝업 표시·워커 bench 정상(0). `--restart`는 사용자 QA · 개발 | P2 | 소 | X-5 | ✅ 11-18 `32eb2d5` |
+| S-1 | **중복 실행 방어(단일 인스턴스)** — 뮤텍스 `Local\NexaMemKeeper.Shell`, 두 번째 실행은 기존 팝업을 열고 종료, 승격 재시작 `--restart` 5초 대기([DR-17](10-decision-record.md), 사용자 확정 11-18). V1 60 green · exe 0.678MB · 유휴 WS 1.41MB · 시험: 두 번째 실행 3초 내 종료(코드 0)·팝업 표시·워커 bench 정상(0). `--restart`는 사용자 QA · 개발 | P2 | 소 | X-5 | ✅ 11-18 `32eb2d5` |
 | E-3 | 고압력 구간 재측정 → **중간 압력(1.5~3.0GB)까지 확인, 결론 동일**([21 §11](21-effectiveness-measurement.md)). 수백 MB 스래싱은 장치 한계로 미검증 — 재도전은 별도 장비 필요 | P2 | 중 | — | ✅ 08-08(부분) |
