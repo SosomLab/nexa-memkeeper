@@ -4,6 +4,8 @@
 
 ## 2026-11-18
 
+- 12차: main ff 병합(`7d8c64d`) · `fix/console-guard`·`fix/single-instance` 삭제. push는 사용자 요청 대기.
+
 - 11차: **S-1 중복 실행 방어(`32eb2d5`)** — 세션당 셸 하나, 두 번째 실행은 기존 팝업을 열고 종료(시험: 3초 내 종료·팝업 표시·워커 bench 정상). exe 0.678MB · 유휴 WS 1.41MB · 60 green. 방식은 [DR-17](10-decision-record.md)(사용자 확인 대기). → [journal/2026-11-18](journal/2026-11-18.md)
 
 - 10차: **C-1~C-3 콘솔 창 방어(`3ee60f8`) · L-1 언어 저장(`f89c94e`) · X-5 지연 시작(`b28ebc2`)** — V1 60 green · exe 0.677MB(+2KB) · DLL 0 · 유휴 WS 1.43MB/Private 1.54MB · CPU ~0%. 설치본 복귀. 육안 확인은 사용자 QA. → [journal/2026-11-18](journal/2026-11-18.md)

@@ -4,8 +4,8 @@
 
 | 브랜치 | 생성 | 병합(커밋) | 삭제 | 커밋수 | 요약 |
 | --- | --- | --- | --- | --- | --- |
-| `fix/single-instance` | 11-18 | — | — | 2 | S-1 중복 실행 방어 + L-2 언어 주석(`32eb2d5`) · 기록(협업 세션). `fix/console-guard` 위에 쌓음 |
-| `fix/console-guard` | 11-18 | — | — | 5 | 콘솔 창 방어 C-1~C-3(`3ee60f8`) · 언어 저장 누락 L-1(`f89c94e`) · X-5 지연 시작(`b28ebc2`) + 기록 커밋 2건(협업 세션) |
+| `fix/single-instance` | 11-18 | 11-18 main ff(→ `7d8c64d`) | 11-18 | 3 | S-1 중복 실행 방어 + L-2 언어 주석(`32eb2d5`) · 기록(협업 세션). `fix/console-guard` 위에 쌓음 |
+| `fix/console-guard` | 11-18 | 11-18 main ff(→ `7d8c64d`, 위 브랜치와 함께) | 11-18 | 5 | 콘솔 창 방어 C-1~C-3(`3ee60f8`) · 언어 저장 누락 L-1(`f89c94e`) · X-5 지연 시작(`b28ebc2`) + 기록 커밋 2건(협업 세션) |
 | `docs/session-automation-rules` | 11-18 | 11-18 main ff(→ `89f3770`) | 11-18 | 4 | 세션 분담·자동화 규칙 [22](22-session-and-automation-rules.md)(`50ae7dc`) · `.gitattributes` `*.sh` LF(`6be3373`) · 11-18 진행사항 최신화(`f103f37`, 협업 세션) · CLAUDE.md 갱신(`89f3770`). `fix/tray-header-version` 위에 쌓음 |
 | `fix/tray-header-version` | 10-12 | 11-18 main ff(→ `89f3770`, 위 브랜치와 함께) | 11-18 | 1 | 트레이 메뉴 머리줄 버전 하드코딩(`0.0.1`) 제거 — 버전 리소스와 같은 출처로 생성(`e9d09cf`) |
 > 08-07 후반(28~35차 — 접기 수정·검색 지우기·M5-1/2/4·`0.6.0` 릴리스·Wiki)은 사용자 요청이 대화 중
