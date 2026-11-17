@@ -37,6 +37,7 @@
 | DR-10 | **목록 창 = 메인 화면** — 메뉴바 + 트리 그리드(확장·정렬) + 프로세스/트리/쓰레드 종료. 구조는 온디맨드 워커 유지(DR-7) |
 | DR-11 | **자동 실행 = `HKCU\…\Run`** — 포터블 원칙의 명시적 예외(사용자가 메뉴로 켤 때만 값 1개, 끄면 삭제) |
 | DR-12 | **exe = `NexaMemKeeper.exe` + 버전 리소스**(`FileDescription=Nexa MemKeeper`) — 알림·작업 관리자에 내부명 노출 금지 |
+| DR-16 | **세션 분담·자동화 개발 규칙 = [docs/22](docs/22-session-and-automation-rules.md)**(11-18) — 개발 Fable × 협업 Opus, 파일 단위 세마포어, push는 개발 세션이 사용자 요청 때만, 자동/고지/질문 3단 경계. DR-13~15는 [docs/10](docs/10-decision-record.md) 참조 |
 
 ## 3. 작업 규약 (요약 — SSOT는 [docs/16](docs/16-doc-git-conventions.md))
 
@@ -56,10 +57,14 @@
 0. 역할(개발 / 협업) 확인 → `ListAgents`로 짝 세션과 역할 · 파일 · 작업 트리 경로 교환 → `bash scripts/install-global-rules.sh --check`([docs/22 §6](docs/22-session-and-automation-rules.md)).
 1. 이 CLAUDE.md + [docs/STATUS.md](docs/STATUS.md) → 2. [DEVLOG](docs/DEVLOG.md) 최상단 + 최신 journal → 3. 할 일 = [docs/TODO.md](docs/TODO.md)(P-1부터 순차).
 
-## 5. 다음 단계 (2026-09-29 갱신)
+## 5. 다음 단계 (2026-11-18 갱신)
 
-1. **0.7.1 심사 대기(할 일 없음)** — choco `nexa-memkeeper`·`.portable` 0.7.1(`Pending Automated Review`) · winget [#443189](https://github.com/microsoft/winget-pkgs/pull/443189)·[#443190](https://github.com/microsoft/winget-pkgs/pull/443190). 0.7.0은 전 채널 게시 완료(winget 09-01, choco 09-02·03). 단 **choco 설치형 0.7.0은 제거 스크립트가 깨진 08-11본** — 0.7.1이 대체한다([journal/2026-09-29](docs/journal/2026-09-29.md)).
-2. **M5-3 — 설치본 실검증**: [최신 릴리스](https://github.com/SosomLab/nexa-memkeeper/releases/latest) 자산으로 설치 → 상주 → 제거 왕복([20 §5](docs/20-packaging.md)). P0인데 아직 미확인 — choco 0.7.1 승인 후 `choco install/uninstall`로 하면 제거 수정도 함께 확인된다.
+1. **0.7.1 전 채널 게시 완료**(11-18 확인) — choco `nexa-memkeeper`·`.portable` Approved · winget [#443189](https://github.com/microsoft/winget-pkgs/pull/443189)·[#443190](https://github.com/microsoft/winget-pkgs/pull/443190) MERGED. choco 설치형 페이지의 "Some Checks Have Failed"는 무서명 오탐 Scan 메모일 뿐 승인은 났다. **main에는 0.7.1 이후 미릴리스 변경이 있다** — 트레이 머리줄 버전 수정(`e9d09cf`, [journal/2026-11-18](docs/journal/2026-11-18.md)).
+2. **M5-3 — 설치본 실검증**(사용자 QA): 설치 → 상주 → 제거 왕복([20 §5](docs/20-packaging.md)). P0인데 아직 미확인 — 이제 `choco install/uninstall nexa-memkeeper`(0.7.1)로 하면 제거 스크립트 수정도 함께 확인된다.
 3. 🔴 **심사 상태 읽는 법**([20 §7-6·§7-7](docs/20-packaging.md)): choco는 피드가 아니라 **패키지 페이지**(`community.chocolatey.org/packages/<id>`) — 피드 조회로는 "조치 대기"를 놓친다(08-08 실수). winget은 체크 아이콘이 아니라 **라벨**(`Validation-Completed`) — 빨간 `✗ 1/19`은 저장소 자체 봇 job 취소일 뿐이다(08-11 확인).
 4. 🔴 **패키징 수정은 커밋만으로 끝나지 않는다** — 제출·승인된 버전에 반영됐는지 공개 nupkg로 확인할 것(08-21 수정이 09-02 승인본에 빠졌던 교훈).
-5. 남은 기능 후보: X-1 **설정 UI**(현재 파일 설정만) · X-4(배터리 인식) · X-5(부팅 후 지연 시작) · X-6(트레이 표시 모드) — [05 §5](docs/05-requirements.md).
+5. **진행 중(사용자 확정 순서 11-18)** — [TODO](docs/TODO.md) C-1~C-3 → X-5:
+   - **콘솔 창 방어**: C-1 워커 생성 시 창 없음 플래그(디버그 빌드 한정 효과) · C-2 디버그/`target\` 경로는 자동 실행에 등록하지 않음 · C-3 choco 포터블 `.gui`(다음 버전 제출에 실려야 반영). "윈도우 시작 시 콘솔 창" 증상 자체는 이 프로그램 원인이 아닐 가능성이 높다(설치본·워커 모두 GUI 서브시스템 실측, 로그온 재현은 미확인).
+   - **X-5 부팅 후 지연 시작**(사용자 결정 11-18): 트레이는 즉시, **자동 정리·워치리스트 트림만 보류** · 매 시작마다 적용 · 기본 **30초** · 설정 창 '일반'에 입력란. 키 = `[general] start_delay_ms`([09](docs/09-settings-schema.md)의 후보 `start_delay_secs`를 ms로 통일).
+6. 남은 기능 후보: 워치리스트 편집 UI(설정 창 자체는 M4에 있음) · X-4(배터리 인식) · X-6(트레이 표시 모드) — [05 §5](docs/05-requirements.md). 조사 중 발견(미착수): 단일 인스턴스 검사 없음 · `to_ini`가 `lang`을 쓰지 않는 것으로 보임(실기 재현 미확인).
+7. **유휴 RSS 읽는 법**: 기록값 1.3MB는 "시작 트림 직후 1분" 조건이다. 워킹셋은 5MB 아래에서 1.4~4.8MB로 출렁이고(자기 트림은 5MB 초과 때만) Private는 2.5MB로 일정하다 — 수치가 달라 보이면 같은 조건의 설치본과 비교한다(11-18 A/B).

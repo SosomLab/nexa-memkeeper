@@ -87,7 +87,7 @@
 
 1. 자기 역할(개발 / 협업)을 확인한다. 사용자 지정이 없으면 묻는다.
 2. `ListAgents`로 짝을 찾고 첫 메시지에 역할 · 손대는 파일 · 돌리는 명령 · 작업 트리 경로를 교환한다. 짝이 없으면 혼자 두 역할을 하고 보고에 "협업 세션 없음 — 직접 수행"을 남긴다.
-3. `bash scripts/install-global-rules.sh --check`로 전역 규칙이 사본과 같은지 본다.
+3. `bash scripts/install-global-rules.sh --check`로 전역 규칙이 사본과 같은지 본다. **Git Bash에서** 실행한다 — PowerShell에서 `bash`를 부르면 WSL이 잡혀 실행되지 않는다(11-18).
 4. [CLAUDE.md §4](../CLAUDE.md) 오리엔테이션(개발 세션은 협업 세션의 요약으로 대신한다)과 아래 §14 사례 원장의 끝 몇 행을 읽는다.
 
 ---
