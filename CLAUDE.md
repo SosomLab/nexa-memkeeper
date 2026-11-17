@@ -48,9 +48,12 @@
 - `.claude/settings.json`(권한)은 **덮어쓰기 금지, 병합만**.
 - 기록에는 "왜 + 실측값". 설계 전 기존 문서·코드 먼저 확인(재발명 금지), 이식 시 출처 경로를 커밋 본문에 명기.
 - **코드 수정 후에는 릴리스 빌드 → 실행 중이면 중지 → 재실행**(사용자 확정 08-07 — 실기 확인용, 절차 [docs/18 §3-1](docs/18-build-and-test.md)).
+- **세션 분담**(SSOT [docs/22](docs/22-session-and-automation-rules.md) Ⅰ부 · 전역 규칙 사본 [docs/claude-global-rules.md](docs/claude-global-rules.md) · 원천 nexa-sql `docs/102` d526d23e, 2026-11-18 정리): 개발 세션(Fable) = 설계 · 원인 분석 · 다층 변경 · 릴리스, 소유 `crates/**` · `Cargo.*` · `.github/**` · `packaging/**` · `scripts/**` · CLAUDE.md · docs/22. 협업 세션(Opus) = 상태 점검 · 조사 · 빌드/시험/실측 **실행** · 기록 · 간단 수정, 소유 `docs/**` · README · Wiki. 한 파일은 한 세션만 고친다(`[SEM 요청]` → 승인 → 해제). 위임 첫 줄 = `[P0~P3]`. 검증 V0(개발 `cargo check`) → V1(협업 fmt · clippy · test) → V2(협업 릴리스 빌드 · 재기동 · 예산 실측) → V3(릴리스 전). 같은 `target/` 동시 사용 금지 · HEAD를 바꾸기 전 상대에게 통지 · **push는 개발 세션이 사용자 요청 때만**(협업은 commit까지).
+- **자동화 개발 규칙**(SSOT [docs/22](docs/22-session-and-automation-rules.md) Ⅱ부): 프로젝트 내부 작업은 묻지 않고 진행하고, **push · 태그 · 패키지 제출 · 이력 파괴 · 프로젝트 밖 사용자 리소스(레지스트리 · 설치본) · 다른 앱 프로세스 · DR/예산 기준 변경은 먼저 묻는다**. 질문 하나 = 결정 하나 + 권장안. 검증 체인은 `&&`만 · 게이트를 낮춰 통과시키지 않는다 · 같은 실패 두 번이면 원인 분석으로. 새 기능 후보는 사용자가 고른 것만 착수 · 범위 확장 금지. 무인 구간은 사용자가 기간을 명시했을 때만.
 
 ## 4. 새 세션 오리엔테이션
 
+0. 역할(개발 / 협업) 확인 → `ListAgents`로 짝 세션과 역할 · 파일 · 작업 트리 경로 교환 → `bash scripts/install-global-rules.sh --check`([docs/22 §6](docs/22-session-and-automation-rules.md)).
 1. 이 CLAUDE.md + [docs/STATUS.md](docs/STATUS.md) → 2. [DEVLOG](docs/DEVLOG.md) 최상단 + 최신 journal → 3. 할 일 = [docs/TODO.md](docs/TODO.md)(P-1부터 순차).
 
 ## 5. 다음 단계 (2026-09-29 갱신)
