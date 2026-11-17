@@ -2,7 +2,16 @@
 
 > 최신이 맨 위(시간 역순, 같은 날 여러 건이면 "N차"로 스택). 상세는 [journal/](journal/), 여기는 요약만.
 
-## 2026-11-18 — 머리줄 버전 수정 병합 · 세션 규칙 정의 · 0.7.1 전 채널 게시 확인
+## 2026-11-18 2차 — `0.7.2` 릴리스 · 4채널 제출
+
+- **[0.7.2 릴리스](https://github.com/SosomLab/nexa-memkeeper/releases/tag/0.7.2)**(커밋 `08c03da`, 태그 push 사용자 승인) — C-1~C-3 · L-1 · X-5 · S-1 · 트레이 머리줄 버전. release run 44191276028 **success**(전 단계).
+- 자산 4종: `-setup.exe` 2,425,391B · `-setup.zip` 1,920,245B · `-portable.zip` 384,040B · `SHA256SUMS.txt` 294B.
+- 릴리스 전 검증: V1 60 green · exe 711,168B(0.678MB) · 버전 리소스 0.7.2 · 외부 DLL 0 · 유휴 WS 1.41MB/Private 1.64MB · CPU 0ms/30s · 로컬 `pack.ps1` 게이트 통과(설치본은 Inno 없어 로컬 미생성 — CI에서 생성).
+- 제출: choco `nexa-memkeeper`·`.portable` 0.7.2 → **`Pending Automated Review`** · winget [#482747](https://github.com/microsoft/winget-pkgs/pull/482747)·[#482748](https://github.com/microsoft/winget-pkgs/pull/482748) OPEN. 포터블 nupkg에 `.gui` 줄(C-3) 실린 것 확인(제출본 = 워크플로 산출물).
+- **다음 시작점**: 채널 심사 추적(choco 페이지 · winget 라벨) · 사용자 QA를 **0.7.2로 확인** — M5-3 설치 왕복 · 설정 창 '시작 지연' · 자동 실행 거부 안내 · 관리자 권한 재시작(`--restart`) · 트레이 머리줄 버전 · NFR-3.
+- 상세 → [journal/2026-11-18](journal/2026-11-18.md) 14차
+
+## 2026-11-18 1차 — 머리줄 버전 수정 병합 · 세션 규칙 정의 · 0.7.1 전 채널 게시 확인
 
 - **0.7.1은 09-29에 전 채널 게시 완료**였다 — choco `nexa-memkeeper`·`.portable` Approved(09-29, moderator virtualex) · winget [#443189](https://github.com/microsoft/winget-pkgs/pull/443189)·[#443190](https://github.com/microsoft/winget-pkgs/pull/443190) MERGED(09-29). 심사 대기 항목은 닫혔다.
 - **`e9d09cf` 트레이 머리줄 버전 수정**(10-12 커밋, STATUS 누락분) — 머리줄이 `0.0.1` 고정이던 것을 버전 리소스와 같은 출처로 생성. 검증: fmt·clippy·test **57 green** · exe **708,096B(0.675MB)** · 외부 DLL 0 · exe 내 `Nexa MemKeeper 0.7.1` 확인. 트레이 메뉴 육안 확인은 **미확인**(사용자 QA). main 병합 대상.
@@ -14,7 +23,6 @@
 - ✅ **콘솔 창 방어 C-1~C-3(`3ee60f8`) · 언어 저장 L-1(`f89c94e`) · X-5 지연 시작(`b28ebc2`)** — `fix/console-guard`(main 병합 전). V1 60 green · exe 0.677MB · 외부 DLL 0 · 유휴 WS 1.43MB · CPU ~0%. 설정 창 입력란·안내 문구는 **미확인(사용자 QA)**.
 - ✅ **S-1 중복 실행 방어(`32eb2d5`, `fix/single-instance`)** — 두 번째 실행은 기존 팝업을 열고 종료. exe 0.678MB · 유휴 WS 1.41MB · 60 green. 방식 [DR-17](10-decision-record.md)은 **사용자 확정 11-18**. 설치본 0.7.1에는 아직 없음.
 - main 병합 완료(`7d8c64d`, 브랜치 2개 삭제) — `origin/main`보다 앞섬.
-- **다음 시작점**: 사용자 QA(설정 창 지연 입력란·자동 실행 거부 안내·트레이 머리줄·`--restart`) · 릴리스 여부. 사용자 몫: M5-3 설치 왕복 QA(이제 choco 0.7.1로 가능).
 - 상세 → [journal/2026-11-18](journal/2026-11-18.md)
 
 ## 직전(2026-09-29 1차) — `0.7.1` 패치 배포: choco 제거 버그 수정본 전 채널 제출

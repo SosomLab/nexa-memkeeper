@@ -3,9 +3,9 @@
 > 목표순. ID·우선(P0~P2)·규모(소/중/대)·의존·상태. 완료 항목은 상태만 바꾸고 지우지 않는다.
 >
 > **남은 일(11-18 기준)**
-> - 개발(사용자 확정 순서): ~~C-1~C-3 → L-1 → X-5~~ ✅ 11-18(`fix/console-guard`) → ~~S-1 · L-2~~ ✅ 11-18(main `7d8c64d`, push 11-18). DR-17 사용자 확정 11-18. 남은 것: 사용자 QA(설정 창 입력란·안내 문구·트레이 머리줄·`--restart`)
-> - 사용자: **M5-3**(설치 왕복 QA, P0 — choco 0.7.1이 승인돼 `choco install/uninstall`로 제거 수정도 함께 확인 가능) · **M3-3**(앱 홈페이지 URL 확정 시 한 줄) · 트레이 머리줄 버전 육안 확인
-> - 대기: 없음 — **0.7.1** 전 채널 게시 완료(choco 2건 09-29 Approved · winget [#443189](https://github.com/microsoft/winget-pkgs/pull/443189)·[#443190](https://github.com/microsoft/winget-pkgs/pull/443190) 09-29 MERGED)
+> - 개발(사용자 확정 순서): ~~C-1~C-3 → L-1 → X-5 → S-1 · L-2~~ ✅ 11-18 → **0.7.2 릴리스**(`08c03da`, 11-18). DR-17 사용자 확정 11-18.
+> - 사용자(**0.7.2로 확인**): **M5-3**(설치 왕복 QA, P0) · 설정 창 '시작 지연' 입력란 · 자동 실행 거부 안내 · 관리자 권한 재시작(`--restart`) · 트레이 머리줄 버전 · NFR-3(팝업 닫은 뒤 RSS 복귀) · **M3-3**(앱 홈페이지 URL 확정 시 한 줄)
+> - 대기: **0.7.2** 심사 — choco 2건 `Pending Automated Review`(11-18) · winget [#482747](https://github.com/microsoft/winget-pkgs/pull/482747)·[#482748](https://github.com/microsoft/winget-pkgs/pull/482748) OPEN. 게시본은 0.7.1(09-29 전 채널)
 > - 코드 후보(사용자 선택 대기): X-1 설정 UI · X-4(배터리) · X-6(트레이 표시 모드)
 
 | ID | 항목 | 우선 | 규모 | 의존 | 상태 |
