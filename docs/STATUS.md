@@ -2,13 +2,20 @@
 
 > 최신이 맨 위(시간 역순, 같은 날 여러 건이면 "N차"로 스택). 상세는 [journal/](journal/), 여기는 요약만.
 
+## 2026-11-18 3차 — 0.7.2 채널 상태 갱신
+
+- **winget 게시 완료** — [#482747](https://github.com/microsoft/winget-pkgs/pull/482747)·[#482748](https://github.com/microsoft/winget-pkgs/pull/482748) MERGED(`Moderator-Approved` · `Publish-Pipeline-Succeeded`).
+- **choco 2건 Ready for review** — Validation·Verification Passed, Scan Note(무서명 오탐, 승인 저지 아님). 사람 모더레이션 대기. 승인 뒤 공개 nupkg로 `.gui`(C-3) 재대조.
+- CI run 44192144993(a1749d8) success.
+- 문서 정리: TODO에 기능 후보 X-1b(워치리스트 편집 UI) · X-4 · X-6 행 추가(사용자 선택 대기), M5-5a~c 문구를 0.7.0 게시 결과로 정리.
+- **다음 시작점**: choco 승인 확인 · 사용자 QA(0.7.2로 — M5-3 설치 왕복 · 설정 창 '시작 지연' · 자동 실행 거부 안내 · `--restart` · 트레이 머리줄 · NFR-3) · 기능 후보 선택.
+
 ## 2026-11-18 2차 — `0.7.2` 릴리스 · 4채널 제출
 
 - **[0.7.2 릴리스](https://github.com/SosomLab/nexa-memkeeper/releases/tag/0.7.2)**(커밋 `08c03da`, 태그 push 사용자 승인) — C-1~C-3 · L-1 · X-5 · S-1 · 트레이 머리줄 버전. release run 44191276028 **success**(전 단계).
 - 자산 4종: `-setup.exe` 2,425,391B · `-setup.zip` 1,920,245B · `-portable.zip` 384,040B · `SHA256SUMS.txt` 294B.
 - 릴리스 전 검증: V1 60 green · exe 711,168B(0.678MB) · 버전 리소스 0.7.2 · 외부 DLL 0 · 유휴 WS 1.41MB/Private 1.64MB · CPU 0ms/30s · 로컬 `pack.ps1` 게이트 통과(설치본은 Inno 없어 로컬 미생성 — CI에서 생성).
 - 제출: choco `nexa-memkeeper`·`.portable` 0.7.2 → **`Pending Automated Review`** · winget [#482747](https://github.com/microsoft/winget-pkgs/pull/482747)·[#482748](https://github.com/microsoft/winget-pkgs/pull/482748) OPEN. 포터블 nupkg에 `.gui` 줄(C-3) 실린 것 확인(제출본 = 워크플로 산출물).
-- **다음 시작점**: 채널 심사 추적(choco 페이지 · winget 라벨) · 사용자 QA를 **0.7.2로 확인** — M5-3 설치 왕복 · 설정 창 '시작 지연' · 자동 실행 거부 안내 · 관리자 권한 재시작(`--restart`) · 트레이 머리줄 버전 · NFR-3.
 - 상세 → [journal/2026-11-18](journal/2026-11-18.md) 14차
 
 ## 2026-11-18 1차 — 머리줄 버전 수정 병합 · 세션 규칙 정의 · 0.7.1 전 채널 게시 확인

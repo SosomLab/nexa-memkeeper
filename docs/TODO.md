@@ -5,8 +5,8 @@
 > **남은 일(11-18 기준)**
 > - 개발(사용자 확정 순서): ~~C-1~C-3 → L-1 → X-5 → S-1 · L-2~~ ✅ 11-18 → **0.7.2 릴리스**(`08c03da`, 11-18). DR-17 사용자 확정 11-18.
 > - 사용자(**0.7.2로 확인**): **M5-3**(설치 왕복 QA, P0) · 설정 창 '시작 지연' 입력란 · 자동 실행 거부 안내 · 관리자 권한 재시작(`--restart`) · 트레이 머리줄 버전 · NFR-3(팝업 닫은 뒤 RSS 복귀) · **M3-3**(앱 홈페이지 URL 확정 시 한 줄)
-> - 대기: **0.7.2** 심사 — choco 2건 `Pending Automated Review`(11-18) · winget [#482747](https://github.com/microsoft/winget-pkgs/pull/482747)·[#482748](https://github.com/microsoft/winget-pkgs/pull/482748) OPEN. 게시본은 0.7.1(09-29 전 채널)
-> - 코드 후보(사용자 선택 대기): X-1 설정 UI · X-4(배터리) · X-6(트레이 표시 모드)
+> - 대기: **0.7.2** choco 2건 **Ready for review**(사람 모더레이션 — Validation·Verification Passed, Scan Note, 11-18). winget [#482747](https://github.com/microsoft/winget-pkgs/pull/482747)·[#482748](https://github.com/microsoft/winget-pkgs/pull/482748)은 **MERGED(게시 완료, 11-18)**
+> - 코드 후보(사용자 선택 대기): X-1b 워치리스트 편집 UI · X-4(배터리) · X-6(트레이 표시 모드) — 아래 표
 
 | ID | 항목 | 우선 | 규모 | 의존 | 상태 |
 | --- | --- | --- | --- | --- | --- |
@@ -33,9 +33,9 @@
 | M5-2 | 배포 2채널(DR-9) — 설치형 Inno(프로그램 목록·자동 실행 질문 기본 체크) + 포터블 ZIP · [20](20-packaging.md) | P0 | 대 | M4-2 | ✅ 08-07(설치본 생성은 Inno 설치 후 실검증) |
 | M5-4 | CI/CD — GitHub Actions(ci·release) + winget·choco 패키지 자산([20 §6·§7](20-packaging.md)) | P0 | 중 | M5-2 | ✅ 08-07(게시는 저장소 변수로 차단) |
 | M5-6 | Wiki 유지 — UI 변경 시 `scripts/capture-shots.ps1` 재실행 + 해당 페이지 갱신 | P2 | 소 | — | ♻️ 상시 |
-| M5-5a | **Chocolatey 등록** — `nexa-memkeeper`·`nexa-memkeeper.portable` 0.7.0 push 완료, 자동 검사·모더레이션 대기([큐](https://ch0.co/moderation)) | P1 | 중 | M5-4 | ✅ 08-08(심사 대기) |
-| M5-5b | **winget 등록** — PR 2건 제출 완료([#413829 설치형](https://github.com/microsoft/winget-pkgs/pull/413829) · [#413830 포터블](https://github.com/microsoft/winget-pkgs/pull/413830)), **검증 통과**(`Validation-Completed`) · 사람 승인 대기 | P1 | 소 | M5-4 | ✅ 08-08(승인 대기) |
-| M5-5c | **choco 지적 대응** — nuspec 이메일 제거 + `choco resubmit`으로 0.7.0 동일 버전 재제출([20 §7-6](20-packaging.md)). 페이지 상태 `Pending automated review`로 복귀 | P1 | 소 | M5-5a | ✅ 08-11(재심사 대기) |
+| M5-5a | **Chocolatey 등록** — `nexa-memkeeper`·`nexa-memkeeper.portable` 0.7.0 push 완료(08-08) → **0.7.0 승인·게시 09-02·09-03** | P1 | 중 | M5-4 | ✅ 08-08 제출 · 09-02·03 게시 |
+| M5-5b | **winget 등록** — PR 2건 제출 완료([#413829 설치형](https://github.com/microsoft/winget-pkgs/pull/413829) · [#413830 포터블](https://github.com/microsoft/winget-pkgs/pull/413830)), **검증 통과**(`Validation-Completed`) → **0.7.0 병합·게시 09-01** | P1 | 소 | M5-4 | ✅ 08-08 제출 · 09-01 게시 |
+| M5-5c | **choco 지적 대응** — nuspec 이메일 제거 + `choco resubmit`으로 0.7.0 동일 버전 재제출([20 §7-6](20-packaging.md)). 페이지 상태 `Pending automated review`로 복귀 → 재심사 통과, 0.7.0 09-02·03 게시(단 08-21 제거 스크립트 수정은 미반영 → 0.7.1로 정정) | P1 | 소 | M5-5a | ✅ 08-11 재제출 · 09-02·03 게시 |
 | M5-5d | 🔴 **choco 제거 스크립트 버그 수정** — `"$packageName:"` 보간이 PS 5.1에서 파싱 실패해 `choco uninstall`이 항상 exit -1([20 §7-8](20-packaging.md)). 수정·BOM 통일·CI 게이트·태그 정리 완료. 승인 기준 전면 대조 결과 **남은 저지 요소 없음**([20 §7-9](20-packaging.md)) — 승인된 0.7.0에는 수정 전 스크립트가 실려(09-29 공개 nupkg 확인) **`0.7.1` 패치로 전 채널 재배포** | P0 | 소 | M5-5c | ✅ 09-29(0.7.1 심사 중) |
 | M5-3 | 설치본 실검증 — [최신 릴리스 자산](https://github.com/SosomLab/nexa-memkeeper/releases/latest)으로 설치/제거 왕복 확인([20 §5](20-packaging.md)). 로컬 생성은 Inno 설치 시 |  P0 | 소 | M5-2 | ☐ **사용자 QA** |
 | X-3 | **정리 히스토리** — `history.csv`(최근 200줄, 계기 포함) + 메인 화면 메뉴에서 열기 | P2 | 소 | E-1 | ✅ 08-08 |
@@ -51,4 +51,7 @@
 | L-2 | **기본 언어 주석 정리** — 주석이 `auto`(`settingswnd.rs:321·323`, `config.rs:71`)와 `en`(`settings.rs:56·108`, [09](09-settings-schema.md))으로 갈림 → `en`으로 통일 · 개발 | P2 | 소 | — | ✅ 11-18 `32eb2d5`(주석 3줄) |
 | X-5 | **부팅 후 지연 시작** — 로그온 직후 부하 회피([05 §5](05-requirements.md)). 사용자 결정(11-18): 트레이는 즉시, **자동 정리·워치리스트 트림만 보류** · 매 시작마다 · 기본 30초 · 설정 창 '일반'에 입력란 · 키 `[general] start_delay_ms`(09 후보 `start_delay_secs`를 ms로 통일, 09·05는 구현 커밋 때 갱신) · 개발 | P2 | 중 | L-1 | ✅ 11-18 `b28ebc2`(V1 60 green · V2 exe 0.677MB · 유휴 WS 1.43MB) |
 | S-1 | **중복 실행 방어(단일 인스턴스)** — 뮤텍스 `Local\NexaMemKeeper.Shell`, 두 번째 실행은 기존 팝업을 열고 종료, 승격 재시작 `--restart` 5초 대기([DR-17](10-decision-record.md), 사용자 확정 11-18). V1 60 green · exe 0.678MB · 유휴 WS 1.41MB · 시험: 두 번째 실행 3초 내 종료(코드 0)·팝업 표시·워커 bench 정상(0). `--restart`는 사용자 QA · 개발 | P2 | 소 | X-5 | ✅ 11-18 `32eb2d5` |
+| X-1b | **워치리스트 편집 UI** — 설정 창에서 `[watch] entries`(프로세스명:임계 MB)를 추가·수정·삭제. 지금은 ini 직접 편집만 가능(X-1 기능 자체는 08-08 ✅, [09 §5](09-settings-schema.md)) | 미정 | 중 | X-1 · M4 설정 창 | ☐ 사용자 선택 대기 |
+| X-4 | **배터리 인식** — 배터리 구동 시 폴링 완화(10초)·자동 정리 보류 옵션([05 §5](05-requirements.md)) | 미정 | 중 | — | ☐ 사용자 선택 대기 |
+| X-6 | **트레이 표시 모드** — %/여유 MB/사용 MB 선택([05 §5](05-requirements.md)) | 미정 | 소 | — | ☐ 사용자 선택 대기 |
 | E-3 | 고압력 구간 재측정 → **중간 압력(1.5~3.0GB)까지 확인, 결론 동일**([21 §11](21-effectiveness-measurement.md)). 수백 MB 스래싱은 장치 한계로 미검증 — 재도전은 별도 장비 필요 | P2 | 중 | — | ✅ 08-08(부분) |

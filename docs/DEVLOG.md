@@ -4,6 +4,8 @@
 
 ## 2026-11-18
 
+- 15차: 0.7.2 winget [#482747](https://github.com/microsoft/winget-pkgs/pull/482747)·[#482748](https://github.com/microsoft/winget-pkgs/pull/482748) **MERGED** · choco 2건 Ready for review(Scan Note) · CI success. TODO에 X-1b·X-4·X-6 행, M5-5a~c·20 지난 문구 정리. → [journal/2026-11-18](journal/2026-11-18.md)
+
 - 14차: **`0.7.2` 릴리스**(`08c03da`) — release run 44191276028 success · 자산 4종 · choco 2건 `Pending Automated Review` · winget [#482747](https://github.com/microsoft/winget-pkgs/pull/482747)·[#482748](https://github.com/microsoft/winget-pkgs/pull/482748). 사전 검증 V1 60 green · exe 0.678MB · 유휴 WS 1.41MB · DLL 0. → [journal/2026-11-18](journal/2026-11-18.md)
 
 - 13차: push `f9a2b16..04a87a4`(9커밋) · CI success(windows·ubuntu·macos) · [DR-17](10-decision-record.md) 사용자 확정. → [journal/2026-11-18](journal/2026-11-18.md)

@@ -18,20 +18,20 @@
 | M2 | 0.3.0 | Top 5 팝업(셸 내) — 열거·**2000ms 자동 갱신**·항목 트림/종료 | ✅ `0.6.0`에 포함되어 배포됨(중간 태그 생략) |
 | M3 | 0.4.0 | **메인 화면**(DR-10) — 메뉴바·그리드·헤더 정렬·**평면/트리 전환**·**이름 검색**·쓰레드 확장·프로세스/트리/쓰레드 종료·자동 실행·의사 프로세스 숨김·앱 아이콘 | ✅ `0.6.0`에 포함되어 배포됨(08-07) |
 | M4 | 0.5.0 | 설정 — ini([09](09-settings-schema.md)) 저장/로드·설정 창·**임계값/주기 자동 정리**·정리 영역 ①~⑤·알림 토글·앱 매니페스트 | ✅ 핫키·다국어 포함, `0.6.0`에 포함되어 배포됨(08-07) |
-| M5 | 0.6.0 | 정리 영역 ③~⑥·이벤트 트리거·폴백 완비·**배포 2채널**(설치형+ZIP, DR-9) | ✅ 08-07 **`0.6.0` → `0.6.2` 릴리스**(Actions 자동 포장·첨부, 자산 4종 — 0.6.1의 설치본 ZIP 누락을 0.6.2에서 정정). 패키지 매니저 등록은 08-08 제출 → **0.7.0 전 채널 게시**(winget 09-01 · choco 09-02·03), **0.7.1 전 채널 게시**(09-29, 11-18 확인), **0.7.2 릴리스·제출**(11-18, 심사 대기). 잔여 = 설치/제거 왕복 실검증(M5-3) |
+| M5 | 0.6.0 | 정리 영역 ③~⑥·이벤트 트리거·폴백 완비·**배포 2채널**(설치형+ZIP, DR-9) | ✅ 08-07 **`0.6.0` → `0.6.2` 릴리스**(Actions 자동 포장·첨부, 자산 4종 — 0.6.1의 설치본 ZIP 누락을 0.6.2에서 정정). 패키지 매니저 등록은 08-08 제출 → **0.7.0 전 채널 게시**(winget 09-01 · choco 09-02·03), **0.7.1 전 채널 게시**(09-29, 11-18 확인), **0.7.2 릴리스**(11-18 — winget 게시, choco 사람 심사 대기). 잔여 = 설치/제거 왕복 실검증(M5-3) |
 
 | **M6** | **0.7.0** | **효용성 실측 후속 + 기능 후보 채택**(로드맵 원안 밖) — E-1 알림 Active 병기 · E-2 주기 정리 비권장 표시 · E-3 고압력 재측정([21 §11](21-effectiveness-measurement.md)) · M3-4 열 폭·창 위치 기억 · X-1 워치리스트 표적 트림 · X-2 전체화면 억제 · X-3 정리 히스토리 | ✅ 08-08 **`0.7.0` 릴리스**(자산 4종 자동 첨부) |
 
 > 기능 후보([05 §5](05-requirements.md)) 채택 현황: **X-1·X-2·X-3·X-5·X-7 완료**(X-5 11-18 `b28ebc2`, 미릴리스), X-4(배터리)·X-6(트레이 표시 모드)는 ☐ 판단 대기.
 > 11-18 수정(C-1~C-3 콘솔 창 방어 · L-1 언어 저장 누락 · X-5 · S-1 · F-1 트레이 머리줄 버전)은 **0.7.2로 릴리스**(11-18).
 
-### 배포 채널 현황 (11-18 갱신 — 0.7.2 제출 직후. 게시본은 0.7.1(09-29 전 채널 승인))
+### 배포 채널 현황 (11-18 2차 갱신 — 0.7.2 winget 게시 · choco 사람 심사 대기)
 
 | 채널 | 패키지 | 상태 |
 | --- | --- | --- |
 | GitHub Releases | 설치본 exe · 설치본 ZIP · 포터블 ZIP · SHA256SUMS | ✅ [0.7.2](https://github.com/SosomLab/nexa-memkeeper/releases/tag/0.7.2) 자산 4종 첨부(11-18, 태그 push 자동) |
-| Chocolatey | `nexa-memkeeper` · `nexa-memkeeper.portable` | ⏳ 0.7.2 push 성공(11-18) → 패키지 페이지 **`Pending Automated Review`**(Validation·Verification·Scan 모두 Pending). 게시본 0.7.1(09-29 Approved) |
-| winget | `SosomLab.NexaMemKeeper` · `.Portable` | ⏳ 0.7.2 PR [#482747](https://github.com/microsoft/winget-pkgs/pull/482747)(설치형) · [#482748](https://github.com/microsoft/winget-pkgs/pull/482748)(포터블) OPEN, 제출 직후 라벨 없음. 게시본 0.7.1(#443189·#443190 09-29 MERGED) |
+| Chocolatey | `nexa-memkeeper` · `nexa-memkeeper.portable` | ⏳ 0.7.2 **Ready for review**(11-18) — Validation·Verification Passed, Scan은 Note(탐지 0 초과 5 미만, 무서명 오탐 — 승인 저지 아님), 사람 모더레이션만 남음. 게시본 0.7.1(09-29 Approved) |
+| winget | `SosomLab.NexaMemKeeper` · `.Portable` | ✅ 0.7.2 [#482747](https://github.com/microsoft/winget-pkgs/pull/482747)(설치형) · [#482748](https://github.com/microsoft/winget-pkgs/pull/482748)(포터블) **MERGED**(11-18, `Moderator-Approved` · `Publish-Pipeline-Succeeded`) |
 
 > 승인 후에는 태그 하나로 세 채널이 함께 갱신된다(변수 `CHOCO_PUSH`·`WINGET_PUBLISH` 모두 on).
 > 🔴 상태는 **choco = 패키지 페이지 · winget = 라벨**로 읽는다([20 §7-6·§7-7](20-packaging.md)) — 피드/체크 아이콘은 오독을 부른다.

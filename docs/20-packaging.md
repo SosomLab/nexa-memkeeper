@@ -112,7 +112,7 @@ winget 패키지 하나에 설치형과 포터블을 함께 담을 수 없다 �
 **`nexamemkeeper` 명령 별칭**으로 등록한다(승격 불필요). 릴리스 워크플로는 게시가 켜져 있을 때
 두 패키지 각각에 PR을 만든다.
 
-> ✅ **08-08 Chocolatey 등록 완료(심사 대기)** — `nexa-memkeeper` 0.7.0 · `nexa-memkeeper.portable` 0.7.0을
+> ✅ **08-08 Chocolatey 등록 완료(심사 대기)**(→ 0.7.0은 09-02·03 승인 · 현재 게시본 0.7.1, 0.7.2는 11-18 사람 심사 대기) — `nexa-memkeeper` 0.7.0 · `nexa-memkeeper.portable` 0.7.0을
 > push했다. 커뮤니티 저장소는 자동 검사 + 사람 모더레이션을 거치며, 통과 전에는 `choco install`로 보이지
 > 않는다([큐 확인](https://ch0.co/moderation)). 이후 태그부터는 변수가 켜져 있어 **자동으로 새 버전이 올라간다**.
 
