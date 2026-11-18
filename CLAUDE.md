@@ -6,7 +6,7 @@
 ## 1. 이 프로젝트는
 
 **Nexa MemKeeper** = Windows **시스템 트레이 상주 초경량 메모리 최적화 도구** — 지속 관찰·회수로 여유 메모리 확보, Top 5 점유 팝업·프로세스 트리 뷰(쓰레드)·선택 종료/회수·간단 설정. **도구 자신의 점유 최소화가 정체성**(유휴 RSS ≤5MB 제안). 상세 [docs/00](docs/00-vision.md)·[docs/05](docs/05-requirements.md).
-현 단계: **`0.7.2` 릴리스(11-18, choco·winget 심사 대기)** — `0.7.0`(08-08) 기능 묶음(E-1~E-3·M3-4·X-1~X-3) 위에 콘솔 창 방어(C-1~C-3)·언어 저장 수정(L-1)·시작 후 자동 작업 보류(X-5)·중복 실행 방어(S-1)·트레이 머리줄 버전 수정을 더했다. exe 0.678MB·유휴 WS 1.41MB·테스트 60 green. **효용성 실측([21](docs/21-effectiveness-measurement.md)) 결론: 평상시·중압력 모두 주기 정리는 이득 없음 — 기본값 변경 없음.**
+현 단계: **`0.7.2` 릴리스(11-18, winget 게시 완료 · choco 사람 심사 대기)** — `0.7.0`(08-08) 기능 묶음(E-1~E-3·M3-4·X-1~X-3) 위에 콘솔 창 방어(C-1~C-3)·언어 저장 수정(L-1)·시작 후 자동 작업 보류(X-5)·중복 실행 방어(S-1)·트레이 머리줄 버전 수정을 더했다. exe 0.678MB·유휴 WS 1.41MB·테스트 60 green. **효용성 실측([21](docs/21-effectiveness-measurement.md)) 결론: 평상시·중압력 모두 주기 정리는 이득 없음 — 기본값 변경 없음.**
 
 <!-- 이전: M0~M4 완료(08-07 11차) — 트레이 셸·정리 엔진(영역 ①~⑤)·Top 5 팝업·메인 화면·설정 창(자동 정리 포함). exe 0.51MB·상주 유휴 1.31MB·테스트 37 green. 실기 QA 후 0.5.0 승격 -->
 
@@ -60,7 +60,7 @@
 
 ## 5. 다음 단계 (2026-11-18 갱신)
 
-1. **0.7.2 릴리스 완료 · 외부 심사 대기**(11-18, 태그 `0.7.2` → `08c03da`, release run 44191276028 success, [journal/2026-11-18](docs/journal/2026-11-18.md)) — GitHub Release 자산 4종 게시 · choco `nexa-memkeeper`·`.portable` 0.7.2 `Pending Automated Review` · winget [#482747](https://github.com/microsoft/winget-pkgs/pull/482747)·[#482748](https://github.com/microsoft/winget-pkgs/pull/482748) OPEN(라벨 전). **심사가 끝날 때까지 새 태그를 만들지 않는다** — choco가 지적하면 `choco-resubmit.yml`로 같은 버전을 재제출한다([20 §7-6](docs/20-packaging.md)). 직전 0.7.1은 전 채널 게시 완료(choco Approved · winget #443189·#443190 MERGED).
+1. **0.7.2 릴리스 완료 · choco 심사 대기**(11-18, 태그 `0.7.2` → `08c03da`, release run 44191276028 success, [journal/2026-11-18](docs/journal/2026-11-18.md)) — GitHub Release 자산 4종 게시 · choco `nexa-memkeeper`·`.portable` 0.7.2 `Ready for review`(자동 검사 통과 · 사람 모더레이션 대기, Scan Note는 무서명 오탐) · winget [#482747](https://github.com/microsoft/winget-pkgs/pull/482747)·[#482748](https://github.com/microsoft/winget-pkgs/pull/482748) **MERGED**(게시 완료). **choco 심사가 끝날 때까지 새 태그를 만들지 않는다** — choco가 지적하면 `choco-resubmit.yml`로 같은 버전을 재제출한다([20 §7-6](docs/20-packaging.md)). 직전 0.7.1은 전 채널 게시 완료(choco Approved · winget #443189·#443190 MERGED).
 2. **M5-3 — 설치본 실검증**(사용자 QA): 설치 → 상주 → 제거 왕복([20 §5](docs/20-packaging.md)). P0인데 아직 미확인 — GitHub Release의 `NexaMemKeeper-0.7.2-setup.exe`로 바로 할 수 있고, choco 승인 뒤에는 `choco install/uninstall nexa-memkeeper`로 한다(이 PC에는 Inno Setup이 없어 로컬에서는 설치본을 만들지 못한다).
 3. 🔴 **심사 상태 읽는 법**([20 §7-6·§7-7](docs/20-packaging.md)): choco는 피드가 아니라 **패키지 페이지**(`community.chocolatey.org/packages/<id>`) — 피드 조회로는 "조치 대기"를 놓친다(08-08 실수). winget은 체크 아이콘이 아니라 **라벨**(`Validation-Completed`) — 빨간 `✗ 1/19`은 저장소 자체 봇 job 취소일 뿐이다(08-11 확인).
 4. 🔴 **패키징 수정은 커밋만으로 끝나지 않는다** — 제출·승인된 버전에 반영됐는지 공개 nupkg로 확인할 것(08-21 수정이 09-02 승인본에 빠졌던 교훈).
@@ -70,5 +70,5 @@
    - **X-5 시작 후 자동 작업 보류**(`b28ebc2`, 사용자 결정): 트레이는 즉시, 자동 정리·워치리스트 트림만 보류 · 매 시작마다 · 기본 30초 · `[general] start_delay_ms`(0~120000, 0=끔) · 설정 창 '일반'.
    - **S-1 중복 실행 방어**(`32eb2d5`, 사용자 확정 11-18 — DR-17): 세션당 셸 하나(`Local\NexaMemKeeper.Shell`), 두 번째 실행은 기존 팝업을 열고 종료, 승격 재시작은 `--restart`로 최대 5초 대기. **상주본이 떠 있으면 개발 빌드는 곧바로 종료된다**([18 §3-1](docs/18-build-and-test.md) — 중지가 먼저).
    - **사용자 QA 대기**(육안·UAC, 0.7.2로 확인): 설정 창 '시작 지연' 입력란 배치 · 자동 실행 거부 안내 · 관리자 권한 재시작 · 트레이 머리줄 버전 · 팝업 닫은 뒤 RSS 복귀(NFR-3).
-6. 다음 할 일: **0.7.2 심사 결과 확인**(choco 패키지 페이지 · winget 라벨 — 아래 3번 방식)과 사용자 QA. 기능 후보(사용자가 고른 것만 착수): 워치리스트 편집 UI(설정 창 자체는 M4에 있음) · X-4(배터리 인식) · X-6(트레이 표시 모드) — [05 §5](docs/05-requirements.md).
+6. 다음 할 일: **choco 0.7.2 승인 확인**(패키지 페이지 — 아래 3번 방식, 승인 뒤 공개 nupkg로 `.gui` 대조)과 사용자 QA. 기능 후보(사용자가 고른 것만 착수): 워치리스트 편집 UI(설정 창 자체는 M4에 있음) · X-4(배터리 인식) · X-6(트레이 표시 모드) — [05 §5](docs/05-requirements.md).
 7. **유휴 RSS 읽는 법**: 기록값 1.3MB는 "시작 트림 직후 1분" 조건이다. 워킹셋은 5MB 아래에서 1.4~4.8MB로 출렁이고(자기 트림은 5MB 초과 때만) Private는 2.5MB로 일정하다 — 수치가 달라 보이면 같은 조건의 설치본과 비교한다(11-18 A/B).
